@@ -180,20 +180,31 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   }, [masterVolume]);
 
   // Mic enable/disable + volume → audio engine
-  useEffect(() => {
-    (async () => {
-      const ok = await enableMic(mic.enabled);
-      if (mic.enabled && !ok) {
-        setMic({ enabled: false });
-        toast.error("Mic access denied", { description: "Check browser permissions." });
-      } else if (mic.enabled && ok) {
-        setMicVolume(mic.volume);
-        toast.success("Mic active", { description: "Routed to master bus." });
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mic.enabled]);
+  // Note: the actual getUserMedia call is made directly in the mic button's
+  // onClick handler to satisfy Safari's "direct user gesture" requirement.
+  // This effect only handles the volume update for a mic that's already active.
   useEffect(() => { if (mic.enabled) setMicVolume(mic.volume); }, [mic.volume, mic.enabled]);
+
+  const handleMicToggle = async () => {
+    await resumeAudioContext();
+    if (mic.enabled) {
+      await enableMic(false);
+      setMic({ enabled: false });
+      toast.message("Mic off");
+    } else {
+      const ok = await enableMic(true);
+      if (ok) {
+        setMicVolume(mic.volume);
+        setMic({ enabled: true });
+        toast.success("Mic live", { description: "Routed to master bus." });
+      } else {
+        setMic({ enabled: false });
+        toast.error("Mic access denied", {
+          description: "Check browser permissions for this exact URL.",
+        });
+      }
+    }
+  };
 
   // Headphone sync → audio engine
   useEffect(() => { setHeadphoneMix(hp.mix); }, [hp.mix]);
@@ -322,7 +333,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             <span className="label-tiny" style={{ color: mic.enabled ? "#FF1F1F" : "#A1A1AA" }}>MIC</span>
             <button
               data-testid="mic-toggle"
-              onClick={async () => { await resumeAudioContext(); setMic({ enabled: !mic.enabled }); }}
+              onClick={handleMicToggle}
               className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${
                 mic.enabled
                   ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_12px_#FF1F1F] beat-pulse"

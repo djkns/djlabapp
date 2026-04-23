@@ -229,13 +229,8 @@ export async function enableMic(enabled) {
   if (enabled) {
     if (micStream) return true; // already on
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
+      // Simple `audio: true` — Safari rejects complex constraint objects.
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micSource = ctx.createMediaStreamSource(micStream);
       micGain = ctx.createGain();
       micGain.gain.value = 0.8;
