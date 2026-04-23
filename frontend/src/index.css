@@ -113,14 +113,14 @@ html, body, #root {
 
 /* Range slider base (vertical fader) */
 .fader-vert {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 48px;
-    height: 180px;
-    writing-mode: vertical-lr;
-    direction: rtl;
+    -webkit-appearance: slider-vertical;
+    appearance: slider-vertical;
+    width: 28px;
+    height: 140px;
     background: transparent;
     cursor: pointer;
+    writing-mode: bt-lr; /* firefox fallback */
+    accent-color: #D10A0A;
 }
 .fader-vert::-webkit-slider-runnable-track {
     width: 6px;
@@ -130,12 +130,11 @@ html, body, #root {
 .fader-vert::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 40px;
-    height: 18px;
+    width: 26px;
+    height: 14px;
     background: #e5e5e5;
     border: 1px solid #000;
     border-radius: 3px;
-    margin-left: -17px;
     box-shadow: 0 0 8px rgba(209,10,10,0.7);
 }
 .fader-vert::-moz-range-track {
@@ -144,8 +143,8 @@ html, body, #root {
     border-radius: 6px;
 }
 .fader-vert::-moz-range-thumb {
-    width: 40px;
-    height: 18px;
+    width: 26px;
+    height: 14px;
     background: #e5e5e5;
     border: 1px solid #000;
     border-radius: 3px;
