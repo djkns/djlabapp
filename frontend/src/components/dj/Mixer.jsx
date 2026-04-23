@@ -108,7 +108,7 @@ export default function Mixer({ deckChains }) {
                 className="w-full"
                 style={{
                   height: `${meterFill(ch === 0 ? levels.l : levels.r) * 100}%`,
-                  background: "linear-gradient(to top, #22c55e 0%, #22c55e 55%, #eab308 75%, #FF3B00 95%)",
+                  background: "linear-gradient(to top, #22c55e 0%, #22c55e 55%, #eab308 75%, #FF1F1F 95%)",
                   transition: "height 40ms linear",
                 }}
               />
@@ -140,15 +140,15 @@ export default function Mixer({ deckChains }) {
           onClick={recording ? stop : start}
           className={`w-full px-4 py-3 rounded border-2 text-[11px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all ${
             recording
-              ? "border-[#FF3B00] bg-[#C62800] text-white nu-glow-accent"
-              : "border-[#C62800] bg-[#C62800]/10 text-[#FF3B00] hover:bg-[#C62800] hover:text-white"
+              ? "border-[#FF1F1F] bg-[#D10A0A] text-white nu-glow-accent"
+              : "border-[#D10A0A] bg-[#D10A0A]/10 text-[#FF1F1F] hover:bg-[#D10A0A] hover:text-white"
           }`}
         >
           {recording ? <Square className="w-3.5 h-3.5" fill="currentColor" /> : <Mic className="w-3.5 h-3.5" />}
           {recording ? "Stop" : "Record"}
         </button>
         <div className="font-mono-dj text-[10px] text-[#A1A1AA] flex items-center gap-1.5">
-          {recording && <span className="w-2 h-2 rounded-full bg-[#FF3B00] beat-pulse" />}
+          {recording && <span className="w-2 h-2 rounded-full bg-[#FF1F1F] beat-pulse" />}
           <span data-testid="record-elapsed">{fmt(elapsed)}</span>
         </div>
         <div className="text-[9px] tracking-[0.2em] uppercase text-[#52525B] flex items-center gap-1">
@@ -159,9 +159,9 @@ export default function Mixer({ deckChains }) {
       {/* Crossfader */}
       <div className="w-full">
         <div className="flex justify-between items-center mb-1 px-1">
-          <span className="label-tiny" style={{ color: "#FF3B00" }}>A</span>
+          <span className="label-tiny" style={{ color: "#FF1F1F" }}>A</span>
           <span className="label-tiny">CROSSFADER</span>
-          <span className="label-tiny" style={{ color: "#FF3B00" }}>B</span>
+          <span className="label-tiny" style={{ color: "#FF1F1F" }}>B</span>
         </div>
         <div className="relative">
           <div

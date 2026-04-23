@@ -54,8 +54,8 @@ export default function DJLab() {
           className="pointer-events-none absolute inset-0 opacity-30"
           style={{
             background:
-              "radial-gradient(1000px 500px at 20% 0%, rgba(198,40,0,0.12) 0%, transparent 60%)," +
-              "radial-gradient(900px 500px at 80% 100%, rgba(255,59,0,0.08) 0%, transparent 65%)",
+              "radial-gradient(1000px 500px at 20% 0%, rgba(209,10,10,0.12) 0%, transparent 60%)," +
+              "radial-gradient(900px 500px at 80% 100%, rgba(255,31,31,0.08) 0%, transparent 65%)",
           }}
         />
 
@@ -63,13 +63,13 @@ export default function DJLab() {
 
         <main className="flex-1 grid grid-cols-12 gap-4 lg:gap-6 p-4 lg:p-6 pb-20 overflow-hidden relative z-10">
           <section className="col-span-5">
-            <Deck id="deckA" label="A" accent="#FF3B00" />
+            <Deck id="deckA" label="A" accent="#FF1F1F" />
           </section>
           <section className="col-span-2">
             <Mixer deckChains={deckChains} />
           </section>
           <section className="col-span-5">
-            <Deck id="deckB" label="B" accent="#FF3B00" />
+            <Deck id="deckB" label="B" accent="#FF1F1F" />
           </section>
         </main>
 

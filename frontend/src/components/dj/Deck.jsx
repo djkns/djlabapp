@@ -67,8 +67,8 @@ export default function Deck({ id, label, accent }) {
     if (!waveRef.current || !audioElRef.current) return;
     const ws = WaveSurfer.create({
       container: waveRef.current,
-      waveColor: "rgba(198, 40, 0, 0.55)",
-      progressColor: accent || "#FF3B00",
+      waveColor: "rgba(209, 10, 10, 0.55)",
+      progressColor: accent || "#FF1F1F",
       cursorColor: "#FFFFFF",
       cursorWidth: 2,
       barWidth: 2,
@@ -312,7 +312,7 @@ export default function Deck({ id, label, accent }) {
               type="number"
               value={deck.baseBPM}
               onChange={(e) => setDeck(id, { baseBPM: Math.max(40, Math.min(220, +e.target.value || 120)) })}
-              className="w-16 bg-black/60 border border-white/10 rounded px-2 py-1 text-xs font-mono-dj text-white text-center focus:outline-none focus:border-[#C62800]"
+              className="w-16 bg-black/60 border border-white/10 rounded px-2 py-1 text-xs font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
               data-testid={`deck-${id === "deckA" ? "a" : "b"}-base-bpm`}
               title="Base BPM"
             />
@@ -334,7 +334,7 @@ export default function Deck({ id, label, accent }) {
             onClick={cue}
             onDoubleClick={setCueHere}
             title="Cue (dbl-click to set cue point)"
-            className="w-12 h-12 rounded-full border border-white/20 hover:border-[#FF3B00] hover:shadow-[0_0_15px_#FF3B00] transition-all flex items-center justify-center bg-[#0a0a0a]"
+            className="w-12 h-12 rounded-full border border-white/20 hover:border-[#FF1F1F] hover:shadow-[0_0_15px_#FF1F1F] transition-all flex items-center justify-center bg-[#0a0a0a]"
           >
             <SkipBack className="w-4 h-4 text-white" />
           </button>
@@ -344,8 +344,8 @@ export default function Deck({ id, label, accent }) {
             disabled={!deck.track}
             className={`w-16 h-16 rounded-full border-2 flex items-center justify-center transition-all ${
               deck.playing
-                ? "bg-[#C62800] border-[#FF3B00] shadow-[0_0_24px_#FF3B00]"
-                : "border-white/20 hover:border-[#FF3B00] hover:shadow-[0_0_15px_#FF3B00]"
+                ? "bg-[#D10A0A] border-[#FF1F1F] shadow-[0_0_24px_#FF1F1F]"
+                : "border-white/20 hover:border-[#FF1F1F] hover:shadow-[0_0_15px_#FF1F1F]"
             } disabled:opacity-40 disabled:cursor-not-allowed`}
           >
             {deck.playing ? <Pause className="w-6 h-6 text-white" fill="currentColor" /> : <Play className="w-6 h-6 text-white ml-1" fill="currentColor" />}
@@ -418,7 +418,7 @@ export default function Deck({ id, label, accent }) {
           data-testid={`deck-${id === "deckA" ? "a" : "b"}-sync`}
           onClick={sync}
           disabled={!otherDeck?.track || !deck.track}
-          className="px-4 py-2 rounded border border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#C62800]/20 hover:border-[#C62800] hover:text-[#FF3B00] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded border border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Sync
         </button>

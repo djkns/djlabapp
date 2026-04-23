@@ -37,7 +37,7 @@ export default function TrackLibrary({ open, onToggle }) {
         className="w-full h-11 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/10 flex items-center justify-between px-6 text-[10px] tracking-[0.25em] uppercase font-bold text-[#A1A1AA] hover:text-white transition-colors"
       >
         <span className="flex items-center gap-2">
-          <Music className="w-3.5 h-3.5 text-[#C62800]" />
+          <Music className="w-3.5 h-3.5 text-[#D10A0A]" />
           Track Library · {tracks.length} tracks
         </span>
         <span className="flex items-center gap-2">
@@ -55,7 +55,7 @@ export default function TrackLibrary({ open, onToggle }) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search tracks..."
-              className="w-full bg-black/60 border border-white/10 rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-[#52525B] focus:outline-none focus:border-[#C62800]"
+              className="w-full bg-black/60 border border-white/10 rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-[#52525B] focus:outline-none focus:border-[#D10A0A]"
               data-testid="library-search"
             />
           </div>
@@ -85,7 +85,7 @@ export default function TrackLibrary({ open, onToggle }) {
                   <td className="px-4 py-2.5">
                     <span className={`text-[9px] tracking-[0.2em] uppercase px-2 py-1 rounded border ${
                       t.source === "s3"
-                        ? "border-[#C62800]/40 text-[#FF3B00] bg-[#C62800]/10"
+                        ? "border-[#D10A0A]/40 text-[#FF1F1F] bg-[#D10A0A]/10"
                         : "border-white/10 text-[#A1A1AA]"
                     }`}>
                       {t.source}
@@ -95,14 +95,14 @@ export default function TrackLibrary({ open, onToggle }) {
                     <div className="flex gap-2">
                       <button
                         onClick={() => loadToDeck(t, "deckA")}
-                        className="px-2 py-1 rounded border border-white/15 text-[10px] font-bold tracking-widest uppercase hover:border-[#FF3B00] hover:text-[#FF3B00] transition"
+                        className="px-2 py-1 rounded border border-white/15 text-[10px] font-bold tracking-widest uppercase hover:border-[#FF1F1F] hover:text-[#FF1F1F] transition"
                         data-testid={`load-a-${t.key}`}
                       >
                         Deck A
                       </button>
                       <button
                         onClick={() => loadToDeck(t, "deckB")}
-                        className="px-2 py-1 rounded border border-white/15 text-[10px] font-bold tracking-widest uppercase hover:border-[#FF3B00] hover:text-[#FF3B00] transition"
+                        className="px-2 py-1 rounded border border-white/15 text-[10px] font-bold tracking-widest uppercase hover:border-[#FF1F1F] hover:text-[#FF1F1F] transition"
                         data-testid={`load-b-${t.key}`}
                       >
                         Deck B

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
  * Rotary EQ knob. -12dB .. +12dB, 0 center.
  * Drag vertically to turn. Double-click to reset.
  */
-export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#C62800" }) {
+export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#D10A0A" }) {
   const ref = useRef(null);
   const [dragging, setDragging] = useState(false);
   const startRef = useRef({ y: 0, v: 0 });
