@@ -26,7 +26,7 @@ export default function HotCuePad({ deckId, getCurrentTime, seekTo, deckLetter }
 
   return (
     <div className="flex flex-col gap-1" data-testid={`hotcue-pad-${deckLetter}`}>
-      <span className="label-tiny">Hot Cues · shift+click clears</span>
+      <span className="label-tiny truncate" title="Shift+click to clear">Hot Cues</span>
       <div className="grid grid-cols-4 gap-1">
         {deck.hotCues.map((v, i) => {
           const set = v != null;
