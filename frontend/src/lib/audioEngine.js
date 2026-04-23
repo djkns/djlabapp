@@ -212,6 +212,50 @@ export async function setHeadphoneSinkId(sinkId) {
 
 export function getHeadphoneSinkId() { return hpSinkId; }
 
+// -------- Mic / Talkover --------
+let micStream = null;
+let micSource = null;
+let micGain = null;
+
+export async function enableMic(enabled) {
+  const { ctx, masterGain } = getAudioContext();
+  if (enabled) {
+    if (micStream) return true; // already on
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+      micSource = ctx.createMediaStreamSource(micStream);
+      micGain = ctx.createGain();
+      micGain.gain.value = 0.8;
+      micSource.connect(micGain);
+      micGain.connect(masterGain);
+      return true;
+    } catch (err) {
+      console.error("mic enable failed", err);
+      micStream = null; micSource = null; micGain = null;
+      return false;
+    }
+  } else {
+    try { micSource?.disconnect(); } catch { /* ignore */ }
+    try { micGain?.disconnect(); } catch { /* ignore */ }
+    if (micStream) micStream.getTracks().forEach((t) => t.stop());
+    micStream = null; micSource = null; micGain = null;
+    return false;
+  }
+}
+
+export function setMicVolume(v) {
+  if (!micGain) return;
+  micGain.gain.value = Math.max(0, Math.min(1.5, v));
+}
+
+export function isMicActive() { return !!micStream; }
+
 let currentRecorder = null;
 let currentChunks = [];
 let recordStartedAt = 0;

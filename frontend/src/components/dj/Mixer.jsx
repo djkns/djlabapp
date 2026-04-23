@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Square, Download, FolderOpen, Gamepad2, Headphones as HpIcon } from "lucide-react";
+import { Mic, MicOff, Square, Download, FolderOpen, Gamepad2, Headphones as HpIcon } from "lucide-react";
 import { useDJStore } from "@/store/djStore";
 import {
   getAudioContext, resumeAudioContext,
   startMasterRecording, stopMasterRecording, crossfadeGains,
+  enableMic, setMicVolume,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
@@ -129,6 +130,8 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   const setRecording = useDJStore((s) => s.setRecording);
   const setHp = useDJStore((s) => s.setHp);
   const hp = useDJStore((s) => s.hp);
+  const mic = useDJStore((s) => s.mic);
+  const setMic = useDJStore((s) => s.setMic);
   const midi = useDJStore((s) => s.midi);
 
   const [elapsed, setElapsed] = useState(0);
@@ -147,6 +150,22 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     const { masterGain } = getAudioContext();
     masterGain.gain.value = masterVolume;
   }, [masterVolume]);
+
+  // Mic enable/disable + volume → audio engine
+  useEffect(() => {
+    (async () => {
+      const ok = await enableMic(mic.enabled);
+      if (mic.enabled && !ok) {
+        setMic({ enabled: false });
+        toast.error("Mic access denied", { description: "Check browser permissions." });
+      } else if (mic.enabled && ok) {
+        setMicVolume(mic.volume);
+        toast.success("Mic active", { description: "Routed to master bus." });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mic.enabled]);
+  useEffect(() => { if (mic.enabled) setMicVolume(mic.volume); }, [mic.volume, mic.enabled]);
 
   useEffect(() => {
     const { masterAnalyser } = getAudioContext();
@@ -254,6 +273,29 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             color="#FF1F1F"
           />
           <MasterVU levels={levels} />
+
+          {/* Mic section */}
+          <div className="flex flex-col items-center gap-1 mt-2 pt-2 border-t border-white/10 w-full">
+            <span className="label-tiny" style={{ color: mic.enabled ? "#FF1F1F" : "#A1A1AA" }}>MIC</span>
+            <button
+              data-testid="mic-toggle"
+              onClick={async () => { await resumeAudioContext(); setMic({ enabled: !mic.enabled }); }}
+              className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                mic.enabled
+                  ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_12px_#FF1F1F] beat-pulse"
+                  : "border-white/20 text-[#A1A1AA] hover:border-white/50 hover:text-white"
+              }`}
+              title={mic.enabled ? "Mic is LIVE — click to mute" : "Enable microphone"}
+            >
+              {mic.enabled ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+            </button>
+            <EQKnob
+              label="MIC VOL" value={mic.volume} min={0} max={1.2}
+              onChange={(v) => setMic({ volume: Math.max(0, Math.min(1.2, v)) })}
+              testid="mic-volume"
+              color="#FF9500"
+            />
+          </div>
         </div>
       </div>
 

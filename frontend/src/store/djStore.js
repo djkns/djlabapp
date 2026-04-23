@@ -41,6 +41,12 @@ export const useDJStore = create(
         sinkId: "default",
       },
 
+      // Mic / talkover
+      mic: {
+        enabled: false,
+        volume: 0.8,
+      },
+
       // MIDI
       midi: {
         enabled: false,
@@ -77,6 +83,9 @@ export const useDJStore = create(
       // Headphones
       setHp: (patch) => set((s) => ({ hp: { ...s.hp, ...patch } })),
       setPfl: (id, on) => set((s) => ({ [id]: { ...s[id], pflOn: on } })),
+
+      // Mic
+      setMic: (patch) => set((s) => ({ mic: { ...s.mic, ...patch } })),
 
       // MIDI
       setMidi: (patch) => set((s) => ({ midi: { ...s.midi, ...patch } })),
