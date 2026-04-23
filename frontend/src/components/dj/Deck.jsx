@@ -82,7 +82,7 @@ export default function Deck({ id, label, accent }) {
       interact: true,
       autoScroll: true,               // scrolls past the cursor as it plays
       autoCenter: true,               // keeps playhead in the center
-      minPxPerSec: 120,               // zoom: ~10s window at 1200px wide
+      minPxPerSec: 80,                // zoom: ~10s window at narrower deck width
       hideScrollbar: true,
       fillParent: false,
     });
