@@ -67,7 +67,7 @@ export default function DJLab() {
 
         <Header s3Configured={s3Configured} onOpenMidi={() => setMidiOpen(true)} />
 
-        <main className="flex-1 grid grid-cols-12 gap-4 lg:gap-5 p-4 lg:p-5 pb-16 overflow-hidden relative z-10">
+        <main className="flex-1 grid grid-cols-12 gap-4 lg:gap-5 p-4 lg:p-5 pb-24 overflow-hidden relative z-10">
           <section className="col-span-4 flex flex-col">
             <Deck id="deckA" label="A" accent="#FF1F1F" />
           </section>
@@ -86,7 +86,7 @@ export default function DJLab() {
 
         <TrackLibrary open={libOpen} onToggle={() => setLibOpen((v) => !v)} />
 
-        <footer className="fixed top-auto bottom-11 right-6 text-[9px] tracking-[0.25em] uppercase text-[#52525B] pointer-events-none z-40">
+        <footer className="fixed top-auto bottom-3 left-6 text-[9px] tracking-[0.25em] uppercase text-[#52525B] pointer-events-none z-40">
           Part of the NU Vibe Network
         </footer>
 

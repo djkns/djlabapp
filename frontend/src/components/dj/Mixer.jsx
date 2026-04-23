@@ -168,7 +168,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
 
   return (
     <div data-testid="mixer"
-      className="flex flex-col gap-2 bg-[#0a0a0a] border-x border-white/5 p-3 items-stretch overflow-y-auto">
+      className="flex flex-col gap-2 bg-[#0a0a0a] border-x border-white/5 p-3 pb-20 items-stretch overflow-y-auto">
       {/* Two channel strips side-by-side */}
       <div className="grid grid-cols-2 gap-2 border-b border-white/5 pb-3">
         <ChannelStrip deckId="deckA" deckLabel="A" chain={deckChains?.deckA} />
