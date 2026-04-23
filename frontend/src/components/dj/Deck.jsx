@@ -76,7 +76,7 @@ export default function Deck({ id, label, accent }) {
       barWidth: 2,
       barRadius: 2,
       barGap: 2,
-      height: 96,
+      height: 64,
       normalize: true,
       media: audioElRef.current,
       interact: true,
@@ -319,7 +319,7 @@ export default function Deck({ id, label, accent }) {
       data-testid={`deck-${letter}`}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
-      className="relative flex flex-col gap-3 bg-[#141414]/80 backdrop-blur-xl border border-white/10 p-4 rounded-lg"
+      className="relative flex flex-col gap-2 bg-[#141414]/80 backdrop-blur-xl border border-white/10 p-3 rounded-lg"
     >
       {/* beat-glow overlay */}
       <div
@@ -332,11 +332,11 @@ export default function Deck({ id, label, accent }) {
       />
 
       {/* Top: vinyl + meta */}
-      <div className="flex items-center gap-4 relative">
+      <div className="flex items-center gap-3 relative">
         <SpinningVinyl
           spinning={deck.playing}
           label={label}
-          size={120}
+          size={84}
           cover={deck.track?.cover || null}
           onScratchStart={onScratchStart}
           onScratchMove={onScratchMove}
@@ -344,47 +344,38 @@ export default function Deck({ id, label, accent }) {
           externalAngle={jogPulse}
         />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2">
             <span className="label-tiny" style={{ color: accent }}>DECK {label}</span>
-            <span className="label-tiny">{deck.track?.source || "—"}</span>
-            {deck.track?.year && <span className="label-tiny">· {deck.track.year}</span>}
-            {deck.track?.genre && <span className="label-tiny truncate max-w-[90px]">· {deck.track.genre}</span>}
+            <span className="label-tiny truncate">{deck.track?.source || "—"}</span>
           </div>
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 mt-0.5">
             {deck.track?.cover && (
               <img src={deck.track.cover} alt="" data-testid={`deck-${letter}-cover`}
-                   className="w-10 h-10 rounded object-cover shrink-0 border border-white/10 shadow-lg" />
+                   className="w-8 h-8 rounded object-cover shrink-0 border border-white/10" />
             )}
             <div className="min-w-0 flex-1">
-              <div className="font-display font-bold text-base truncate" data-testid={`deck-${letter}-title`}>
+              <div className="font-display font-bold text-sm truncate" data-testid={`deck-${letter}-title`}>
                 {deck.track?.name || "No track loaded"}
               </div>
-              <div className="text-xs text-[#A1A1AA] truncate" data-testid={`deck-${letter}-artist`}>
+              <div className="text-[10px] text-[#A1A1AA] truncate" data-testid={`deck-${letter}-artist`}>
                 {deck.track ? (deck.track.artist || "Unknown artist") : "Drag & drop or pick from library"}
               </div>
-              {deck.track?.album && (
-                <div className="text-[10px] text-[#52525B] truncate italic" data-testid={`deck-${letter}-album`}>
-                  {deck.track.album}
-                </div>
-              )}
             </div>
           </div>
 
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="font-mono-dj text-xs text-[#A1A1AA]">
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="font-mono-dj text-[10px] text-[#A1A1AA]">
               {formatTime(deck.currentTime)} / {formatTime(deck.duration)}
             </span>
-            <div className="flex items-center gap-2">
-              <div>
-                <div className="label-tiny">BPM</div>
-                <div className="font-mono-dj font-bold text-xl" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
-                  {currentBPM}
-                </div>
+            <div className="flex items-center gap-1.5">
+              <div className="label-tiny">BPM</div>
+              <div className="font-mono-dj font-bold text-base leading-none" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
+                {currentBPM}
               </div>
               <input
                 type="number" value={deck.baseBPM}
                 onChange={(e) => setDeck(id, { baseBPM: Math.max(40, Math.min(220, +e.target.value || 120)) })}
-                className="w-14 bg-black/60 border border-white/10 rounded px-2 py-1 text-[11px] font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
+                className="w-11 bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
                 data-testid={`deck-${letter}-base-bpm`} title="Base BPM"
               />
             </div>
@@ -393,73 +384,72 @@ export default function Deck({ id, label, accent }) {
       </div>
 
       {/* Waveform */}
-      <div className="relative bg-black/40 border border-white/5 rounded p-2">
+      <div className="relative bg-black/40 border border-white/5 rounded p-1.5">
         <div ref={waveRef} data-testid={`deck-${letter}-waveform`} />
-        {/* Loop overlay markers would go here in v2 */}
       </div>
 
-      {/* Controls row 1 — Transport | Keylock | Tempo (horizontal) */}
-      <div className="flex items-center gap-3 flex-wrap">
+      {/* Controls row 1 — Transport | Keylock | Tempo (single compact row, no wrap) */}
+      <div className="flex items-center gap-2">
         {/* Transport */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             data-testid={`deck-${letter}-cue`}
             onClick={cue} onDoubleClick={setCueHere}
             title="Cue (dbl-click to set cue point)"
-            className="w-11 h-11 rounded-full border border-white/20 hover:border-[#FF1F1F] hover:shadow-[0_0_15px_#FF1F1F] transition-all flex items-center justify-center bg-[#0a0a0a]"
+            className="w-9 h-9 rounded-full border border-white/20 hover:border-[#FF1F1F] hover:shadow-[0_0_12px_#FF1F1F] transition-all flex items-center justify-center bg-[#0a0a0a] shrink-0"
           >
-            <SkipBack className="w-3.5 h-3.5 text-white" />
+            <SkipBack className="w-3 h-3 text-white" />
           </button>
           <button
             data-testid={`deck-${letter}-play`}
             onClick={togglePlay} disabled={!deck.track}
-            className={`w-14 h-14 rounded-full border-2 flex items-center justify-center transition-all ${
+            className={`w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
               deck.playing
-                ? "bg-[#D10A0A] border-[#FF1F1F] shadow-[0_0_24px_#FF1F1F]"
-                : "border-white/20 hover:border-[#FF1F1F] hover:shadow-[0_0_15px_#FF1F1F]"
+                ? "bg-[#D10A0A] border-[#FF1F1F] shadow-[0_0_20px_#FF1F1F]"
+                : "border-white/20 hover:border-[#FF1F1F] hover:shadow-[0_0_12px_#FF1F1F]"
             } disabled:opacity-40 disabled:cursor-not-allowed`}
           >
-            {deck.playing ? <Pause className="w-5 h-5 text-white" fill="currentColor" /> : <Play className="w-5 h-5 text-white ml-0.5" fill="currentColor" />}
+            {deck.playing ? <Pause className="w-4 h-4 text-white" fill="currentColor" /> : <Play className="w-4 h-4 text-white ml-0.5" fill="currentColor" />}
           </button>
           <button
             data-testid={`deck-${letter}-pfl`}
             onClick={() => setPfl(id, !deck.pflOn)}
             title="Headphone Cue (PFL)"
-            className={`w-11 h-11 rounded-full border flex items-center justify-center transition-all ${
+            className={`w-9 h-9 rounded-full border flex items-center justify-center transition-all shrink-0 ${
               deck.pflOn
-                ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_14px_#FF1F1F]"
+                ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_12px_#FF1F1F]"
                 : "border-white/20 text-[#A1A1AA] hover:border-white/50 hover:text-white"
             }`}
           >
-            <Headphones className="w-3.5 h-3.5" />
+            <Headphones className="w-3 h-3" />
           </button>
         </div>
 
-        {/* Keylock + tempo range */}
-        <div className="flex flex-col gap-1 shrink-0 pl-2 border-l border-white/10">
+        {/* Keylock + tempo range (stacked vertically, compact) */}
+        <div className="flex flex-col gap-1 shrink-0">
           <button
             onClick={() => setDeck(id, { keylock: !deck.keylock })}
             data-testid={`deck-${letter}-keylock`}
             title="Keylock — preserve pitch when tempo changes"
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-[0.15em] border-2 transition ${
+            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-[0.1em] border transition ${
               deck.keylock
-                ? "border-[#FF1F1F] text-[#FF1F1F] bg-[#D10A0A]/20 shadow-[0_0_8px_#FF1F1F55]"
+                ? "border-[#FF1F1F] text-[#FF1F1F] bg-[#D10A0A]/20"
                 : "border-white/20 text-[#A1A1AA] hover:border-white/40 hover:text-white"
             }`}
           >
             Keylock
           </button>
           <button data-testid={`deck-${letter}-tempo-range`} onClick={toggleTempoRange}
-            className="px-2 py-1 rounded border-2 border-white/15 text-[10px] font-bold uppercase tracking-[0.15em] text-[#A1A1AA] hover:text-white hover:border-white/30">
+            className="px-1.5 py-0.5 rounded border border-white/15 text-[9px] font-bold uppercase tracking-[0.1em] text-[#A1A1AA] hover:text-white hover:border-white/30">
             ±{deck.tempoRange}%
           </button>
         </div>
 
         {/* Tempo (horizontal) + Sync */}
-        <div className="flex flex-col gap-1 flex-1 min-w-[160px] pl-2 border-l border-white/10">
+        <div className="flex flex-col gap-1 flex-1 min-w-0 pl-2 border-l border-white/10">
           <div className="flex items-center justify-between">
             <span className="label-tiny">TEMPO</span>
-            <span className="font-mono-dj text-[10px] text-[#A1A1AA]">
+            <span className="font-mono-dj text-[9px] text-[#A1A1AA]">
               {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
             </span>
           </div>
@@ -469,26 +459,24 @@ export default function Deck({ id, label, accent }) {
             data-testid={`deck-${letter}-tempo`} />
           <button data-testid={`deck-${letter}-sync`} onClick={sync}
             disabled={!otherDeck?.track || !deck.track}
-            className="px-3 py-1 rounded border-2 border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            className="px-2 py-0.5 rounded border border-white/20 bg-transparent text-[9px] font-bold uppercase tracking-[0.15em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
             Sync
           </button>
         </div>
-      </div>
 
-      {/* Controls row 2 — Hot cues + Loop (full deck width) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-        <HotCuePad deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
-        <LoopControls deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
-      </div>
-
-      {/* Bottom: Load file */}
-      <div className="flex items-center gap-2">
-        <label className="ml-auto px-3 py-2 rounded border border-white/10 text-[10px] font-bold uppercase tracking-[0.2em] text-[#A1A1AA] hover:text-white hover:border-white/30 cursor-pointer flex items-center gap-2"
-          data-testid={`deck-${letter}-upload`}>
+        {/* Load file — inline, right side */}
+        <label className="shrink-0 px-2 py-1 rounded border border-white/10 text-[9px] font-bold uppercase tracking-[0.15em] text-[#A1A1AA] hover:text-white hover:border-white/30 cursor-pointer flex items-center gap-1"
+          data-testid={`deck-${letter}-upload`} title="Load audio file">
           <Upload className="w-3 h-3" />
-          Load file
+          Load
           <input type="file" accept="audio/*" className="hidden" onChange={onFile} />
         </label>
+      </div>
+
+      {/* Controls row 2 — Hot cues + Loop (always 2 cols) */}
+      <div className="grid grid-cols-2 gap-2">
+        <HotCuePad deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
+        <LoopControls deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
       </div>
     </div>
   );

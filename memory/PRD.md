@@ -49,7 +49,18 @@ Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Desig
 - [x] **Vertical fader modern-Chrome compatibility (FIXED 2026-02-23)**
 
 ## Fixed During This Session
-- **2026-02-23 — Vertical fader rendering in Chrome 124+.** User reported faders were invisible (only tiny thumb square visible). Root cause: Chrome 124+ removed `-webkit-appearance: slider-vertical`. Replaced with W3C standard `writing-mode: vertical-lr; direction: rtl; appearance: auto` in `/app/frontend/src/index.css`. Added proper track gradient, thumb centering via `margin-left: -10px`. Verified via Playwright: Channel vol top→1.0, mid→0.49, bottom→0.0; Master vol top→1.2, bottom→0.0. Works on all modern browsers.
+- **2026-02-23 — Vertical fader rendering in Chrome 124+.** Chrome 124+ removed `-webkit-appearance: slider-vertical`. Replaced with W3C standard `writing-mode: vertical-lr; direction: rtl; appearance: auto`. Verified click/drag working top→bottom.
+- **2026-02-23 — Badge clearance.** Added `pb-24` bottom padding on main + `pb-20` on mixer scroll area; moved "Part of the NU Vibe Network" footer to bottom-left so it doesn't collide with Emergent preview badge.
+- **2026-02-23 — Deck re-compacted.** Deck height reduced from 516px → 349px (~32% shorter). Changes:
+  - Vinyl 120px → 84px
+  - Waveform 96px → 64px
+  - Transport/Keylock/Tempo/Load merged into single non-wrapping row
+  - Hot Cue pad buttons h-9 → h-7
+  - Hot Cues + Loop always 2-col grid (removed `md:` breakpoint that stacked at <768px)
+  - LOAD button moved inline instead of taking a separate row
+  - Meta section inlined: DECK label, source, title, artist, time, BPM all in top flex section
+  - Container padding `p-4 gap-3` → `p-3 gap-2`
+  - Stable 349px height at 1280, 1440, 1920 viewports.
 
 ## Outstanding / Pending
 - **MIDI cross-talk (USER VERIFICATION PENDING)** — 500ms sampler + 30ms debounce + PANIC button implemented. Awaiting user confirmation with Hercules T7 / Inpulse.

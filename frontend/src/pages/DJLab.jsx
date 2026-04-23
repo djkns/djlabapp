@@ -67,7 +67,7 @@ export default function DJLab() {
 
         <Header s3Configured={s3Configured} onOpenMidi={() => setMidiOpen(true)} />
 
-        <main className="flex-1 grid grid-cols-12 gap-4 lg:gap-5 p-4 lg:p-5 pb-24 overflow-hidden relative z-10">
+        <main className="flex-1 grid grid-cols-12 gap-3 p-3 pb-24 overflow-hidden relative z-10">
           <section className="col-span-4 flex flex-col">
             <Deck id="deckA" label="A" accent="#FF1F1F" />
           </section>

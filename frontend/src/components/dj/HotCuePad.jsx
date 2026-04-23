@@ -27,7 +27,7 @@ export default function HotCuePad({ deckId, getCurrentTime, seekTo, deckLetter }
   return (
     <div className="flex flex-col gap-1" data-testid={`hotcue-pad-${deckLetter}`}>
       <span className="label-tiny">Hot Cues · shift+click clears</span>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-1">
         {deck.hotCues.map((v, i) => {
           const set = v != null;
           const color = SLOT_COLORS[i] || "#FF1F1F";
@@ -38,7 +38,7 @@ export default function HotCuePad({ deckId, getCurrentTime, seekTo, deckLetter }
               data-testid={`deck-${deckLetter}-cue-${i + 1}`}
               onClick={(e) => onSlotClick(i, e)}
               disabled={!hasTrack}
-              className="relative h-9 rounded-sm font-display font-black text-sm flex items-center justify-center transition-all border-2 disabled:cursor-not-allowed overflow-hidden group"
+              className="relative h-7 rounded-sm font-display font-black text-xs flex items-center justify-center transition-all border-2 disabled:cursor-not-allowed overflow-hidden group"
               style={{
                 background: set ? color : "#141414",
                 borderColor: set ? color : (hasTrack ? `${color}66` : "rgba(255,255,255,0.15)"),
