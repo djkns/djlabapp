@@ -1,6 +1,6 @@
 import { Disc3 } from "lucide-react";
 
-export default function SpinningVinyl({ spinning, label = "NU", size = 160 }) {
+export default function SpinningVinyl({ spinning, label = "NU", size = 160, cover = null }) {
   return (
     <div
       data-testid="spinning-vinyl"
@@ -23,11 +23,22 @@ export default function SpinningVinyl({ spinning, label = "NU", size = 160 }) {
       />
       {/* Label */}
       <div
-        className={`relative w-[38%] h-[38%] rounded-full bg-[#D10A0A] flex items-center justify-center text-white font-display font-black tracking-tight shadow-inner ${spinning ? "vinyl-spin" : ""}`}
-        style={{ fontSize: size * 0.09 }}
+        className={`relative rounded-full flex items-center justify-center text-white font-display font-black tracking-tight shadow-inner overflow-hidden ${spinning ? "vinyl-spin" : ""}`}
+        style={{
+          width: "38%",
+          height: "38%",
+          background: cover ? "#000" : "#D10A0A",
+          fontSize: size * 0.09,
+        }}
       >
-        <Disc3 className="w-4 h-4 mr-1 opacity-70" />
-        {label}
+        {cover ? (
+          <img src={cover} alt="" className="w-full h-full object-cover opacity-90" />
+        ) : (
+          <>
+            <Disc3 className="w-4 h-4 mr-1 opacity-70" />
+            {label}
+          </>
+        )}
       </div>
       {/* Center pin */}
       <div className="absolute w-2 h-2 rounded-full bg-[#FF1F1F] nu-glow-accent" />

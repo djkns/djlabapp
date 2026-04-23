@@ -5,6 +5,7 @@ import SpinningVinyl from "./SpinningVinyl";
 import EQKnob from "./EQKnob";
 import { useDJStore } from "@/store/djStore";
 import { createDeckChain, resumeAudioContext } from "@/lib/audioEngine";
+import { readTags } from "@/lib/mediaTags";
 import { toast } from "sonner";
 
 const formatTime = (s) => {
@@ -144,35 +145,40 @@ export default function Deck({ id, label, accent }) {
     }
   }, [id, setDeck]);
 
+  // Build a track object from a File with ID3/metadata
+  const trackFromFile = useCallback(async (file, keyPrefix) => {
+    const fallbackName = file.name.replace(/\.[^.]+$/, "");
+    const url = URL.createObjectURL(file);
+    const meta = await readTags(file);
+    return {
+      key: `${keyPrefix}-${Date.now()}`,
+      name: meta.title || fallbackName,
+      artist: meta.artist || "Unknown artist",
+      album: meta.album || null,
+      year: meta.year || null,
+      genre: meta.genre || null,
+      cover: meta.picture || null,
+      url,
+      bpm: meta.bpm || 120,
+      source: "local",
+    };
+  }, []);
+
   // Upload local file
-  const onFile = (e) => {
+  const onFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    loadTrack({
-      key: `local-${Date.now()}`,
-      name: file.name.replace(/\.[^.]+$/, ""),
-      artist: "Local",
-      url,
-      bpm: 120,
-      source: "local",
-    });
+    const track = await trackFromFile(file, "local");
+    loadTrack(track);
   };
 
   // Drag-drop
-  const onDrop = (e) => {
+  const onDrop = async (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    loadTrack({
-      key: `drop-${Date.now()}`,
-      name: file.name.replace(/\.[^.]+$/, ""),
-      artist: "Local",
-      url,
-      bpm: 120,
-      source: "local",
-    });
+    const track = await trackFromFile(file, "drop");
+    loadTrack(track);
   };
 
   // Expose loadTrack to window for DJLab to dispatch (via custom event)
@@ -276,17 +282,37 @@ export default function Deck({ id, label, accent }) {
           spinning={deck.playing}
           label={label}
           size={140}
+          cover={deck.track?.cover || null}
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="label-tiny" style={{ color: accent }}>DECK {label}</span>
             <span className="label-tiny">{deck.track?.source || "—"}</span>
+            {deck.track?.year && <span className="label-tiny">· {deck.track.year}</span>}
+            {deck.track?.genre && <span className="label-tiny truncate max-w-[100px]">· {deck.track.genre}</span>}
           </div>
-          <div className="font-display font-bold text-lg truncate" data-testid={`deck-${id === "deckA" ? "a" : "b"}-title`}>
-            {deck.track?.name || "No track loaded"}
-          </div>
-          <div className="text-xs text-[#A1A1AA] truncate">
-            {deck.track?.artist || "Drag & drop or pick from library"}
+          <div className="flex items-center gap-2.5 min-w-0">
+            {deck.track?.cover && (
+              <img
+                src={deck.track.cover}
+                alt=""
+                data-testid={`deck-${id === "deckA" ? "a" : "b"}-cover`}
+                className="w-11 h-11 rounded object-cover shrink-0 border border-white/10 shadow-lg"
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="font-display font-bold text-lg truncate" data-testid={`deck-${id === "deckA" ? "a" : "b"}-title`}>
+                {deck.track?.name || "No track loaded"}
+              </div>
+              <div className="text-xs text-[#A1A1AA] truncate" data-testid={`deck-${id === "deckA" ? "a" : "b"}-artist`}>
+                {deck.track?.artist || "Drag & drop or pick from library"}
+              </div>
+              {deck.track?.album && (
+                <div className="text-[10px] text-[#52525B] truncate italic" data-testid={`deck-${id === "deckA" ? "a" : "b"}-album`}>
+                  {deck.track.album}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Time */}
