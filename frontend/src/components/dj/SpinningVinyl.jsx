@@ -1,22 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Disc3 } from "lucide-react";
 
 /**
  * Scratchable spinning platter.
- *
- * Props:
- *   spinning      — auto-spin when not scratching (true = playing)
- *   cover         — optional cover art
- *   onScratchStart()
- *   onScratchMove(deltaRadians)
- *   onScratchEnd()
- *
- * Scratch UX:
- *   - Mouse / touch-down on the platter → scratch mode starts.
- *   - Drag rotationally → deltaRadians reported (positive = CW = forward).
- *   - Release → scratch ends.
  */
-export default function SpinningVinyl({
+function SpinningVinyl({
   spinning,
   label = "NU",
   size = 160,
@@ -146,3 +134,15 @@ export default function SpinningVinyl({
     </div>
   );
 }
+
+// Memoize so Deck re-renders on timeupdate don't thrash the CSS animation.
+export default memo(SpinningVinyl, (prev, next) =>
+  prev.spinning === next.spinning &&
+  prev.label === next.label &&
+  prev.size === next.size &&
+  prev.cover === next.cover &&
+  prev.externalAngle === next.externalAngle &&
+  prev.onScratchStart === next.onScratchStart &&
+  prev.onScratchMove === next.onScratchMove &&
+  prev.onScratchEnd === next.onScratchEnd
+);

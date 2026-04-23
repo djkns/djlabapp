@@ -117,29 +117,28 @@ export default function Deck({ id, label, accent }) {
   const JOG_TICKS_PER_ROTATION = 128;
   const JOG_SEC_PER_TICK = SCRATCH_SEC_PER_ROTATION / JOG_TICKS_PER_ROTATION;
   const scratchRef = useRef({ wasPlaying: false, baseTime: 0, savedRate: 1 });
-  const [jogPulse, setJogPulse] = useState(0);        // animates the vinyl briefly on MIDI jog
+  const [jogPulse, setJogPulse] = useState(0);
   const jogPulseTimer = useRef(null);
 
-  const onScratchStart = () => {
+  const onScratchStart = useCallback(() => {
     const el = audioElRef.current;
-    if (!el || !deck.track) return;
+    if (!el || !useDJStore.getState()[id].track) return;
     scratchRef.current.wasPlaying = !el.paused;
     scratchRef.current.baseTime = el.currentTime || 0;
     scratchRef.current.savedRate = el.playbackRate || 1;
-    // Pause natural playback — we drive currentTime by hand while scratching
     try { el.pause(); } catch { /* noop */ }
-  };
+  }, [id]);
 
-  const onScratchMove = (deltaRad) => {
+  const onScratchMove = useCallback((deltaRad) => {
     const el = audioElRef.current;
-    if (!el || !deck.track) return;
+    if (!el || !useDJStore.getState()[id].track) return;
     const deltaSec = (deltaRad / (2 * Math.PI)) * SCRATCH_SEC_PER_ROTATION;
     const next = Math.max(0, Math.min((el.duration || 0) - 0.05, scratchRef.current.baseTime + deltaSec));
     try { el.currentTime = next; } catch { /* noop */ }
     setDeck(id, { currentTime: next });
-  };
+  }, [id, setDeck]);
 
-  const onScratchEnd = () => {
+  const onScratchEnd = useCallback(() => {
     const el = audioElRef.current;
     if (!el) return;
     el.playbackRate = scratchRef.current.savedRate;
@@ -147,7 +146,7 @@ export default function Deck({ id, label, accent }) {
     if (scratchRef.current.wasPlaying) {
       el.play().then(() => setDeck(id, { playing: true })).catch(() => {});
     }
-  };
+  }, [id, setDeck]);
 
   // Load track
   const loadTrack = useCallback(async (track) => {
