@@ -35,6 +35,7 @@ AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
 S3_BUCKET = os.environ.get('S3_BUCKET')
 S3_PREFIX = os.environ.get('S3_PREFIX', '')
+S3_ENDPOINT_URL = os.environ.get('S3_ENDPOINT_URL')  # non-empty for S3-compatible providers (Linode, Wasabi, B2, R2)
 
 AUDIO_EXTENSIONS = ('.mp3', '.wav', '.m4a', '.flac', '.ogg', '.aac')
 
@@ -94,12 +95,27 @@ DEMO_TRACKS = [
 def get_s3_client():
     if not (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and S3_BUCKET):
         return None
-    return boto3.client(
-        's3',
-        region_name=AWS_REGION,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    )
+    kwargs = {
+        "region_name": AWS_REGION,
+        "aws_access_key_id": AWS_ACCESS_KEY_ID,
+        "aws_secret_access_key": AWS_SECRET_ACCESS_KEY,
+    }
+    if S3_ENDPOINT_URL:
+        kwargs["endpoint_url"] = S3_ENDPOINT_URL
+    return boto3.client('s3', **kwargs)
+
+
+def _clean_filename(raw: str) -> str:
+    """01_-_brown_sugar -> 01 - brown sugar"""
+    s = raw.replace("_-_", " - ").replace("_", " ").strip()
+    # collapse double spaces
+    return " ".join(s.split())
+
+
+def _clean_folder(raw: str) -> str:
+    """100-greatest-neo-soul-songs -> 100 greatest neo soul songs"""
+    s = raw.replace("_", " ").replace("-", " ").strip()
+    return " ".join(s.split())
 
 
 def _list_s3_tracks():
@@ -115,14 +131,18 @@ def _list_s3_tracks():
                 continue
             if not any(key.lower().endswith(ext) for ext in AUDIO_EXTENSIONS):
                 continue
-            name = key.split('/')[-1]
-            # strip extension for title
-            title = name.rsplit('.', 1)[0]
+            parts = key.split('/')
+            filename = parts[-1]
+            folder = parts[-2] if len(parts) > 1 else ""
+            title_raw = filename.rsplit('.', 1)[0]
+            title = _clean_filename(title_raw)
+            album = _clean_folder(folder) if folder else ""
             tracks.append({
                 "key": key,
                 "name": title,
                 "artist": "",
-                "url": None,  # resolved via /api/tracks/url
+                "album": album,
+                "url": None,
                 "bpm": None,
                 "source": "s3",
                 "size": obj['Size'],
@@ -152,6 +172,7 @@ class Track(BaseModel):
     key: str
     name: str
     artist: Optional[str] = ""
+    album: Optional[str] = ""
     url: Optional[str] = None
     bpm: Optional[float] = None
     source: str = "demo"
@@ -199,57 +220,59 @@ async def list_tracks(source: Optional[str] = Query(None, description="'s3' | 'd
 @api_router.get("/tracks/url")
 async def get_track_url(key: str = Query(...), expires: int = Query(3600, ge=60, le=86400)):
     """Return a playable URL for a given track key.
-    - For demo tracks: returns a same-origin proxy URL (CORS-safe for Web Audio API).
-    - For S3 tracks: returns a presigned URL."""
+    For both demo and S3, returns our /api/tracks/stream proxy URL so the browser's
+    Web Audio API (which requires crossOrigin='anonymous' + CORS) can always decode it."""
     demo = next((t for t in DEMO_TRACKS if t["key"] == key), None)
     if demo:
-        # Return our own /api/tracks/stream endpoint — SoundHelix doesn't send CORS
-        backend_base = os.environ.get('PUBLIC_BACKEND_URL', '')  # optional absolute
-        stream_url = f"{backend_base}/api/tracks/stream?key={key}" if backend_base else f"/api/tracks/stream?key={key}"
-        return {"url": stream_url, "key": key, "expires_in": 0, "source": "demo"}
+        return {"url": f"/api/tracks/stream?key={key}", "key": key, "expires_in": 0, "source": "demo"}
 
     if not (AWS_ACCESS_KEY_ID and S3_BUCKET):
         raise HTTPException(status_code=404, detail="Track not found")
 
-    try:
-        url = await run_in_threadpool(_presign, key, expires)
-        return {"url": url, "key": key, "expires_in": expires, "source": "s3"}
-    except HTTPException:
-        raise
-    except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"S3 error: {e}")
+    # For S3, the proxy will sign internally — return a short-lived stream URL
+    import urllib.parse as _u
+    return {
+        "url": f"/api/tracks/stream?key={_u.quote(key, safe='')}",
+        "key": key,
+        "expires_in": expires,
+        "source": "s3",
+    }
 
 
 @api_router.get("/tracks/stream")
-async def stream_demo_track(key: str = Query(...), request: Request = None):
-    """Proxy demo tracks with proper CORS + Range support so the browser's
-    Web Audio API (crossOrigin='anonymous') can decode them."""
+async def stream_track(key: str = Query(...), request: Request = None):
+    """Range-aware CORS-safe proxy for BOTH demo and S3 tracks."""
     demo = next((t for t in DEMO_TRACKS if t["key"] == key), None)
-    if not demo:
-        raise HTTPException(status_code=404, detail="Demo track not found")
 
-    upstream = demo["url"]
+    if demo:
+        upstream = demo["url"]
+    else:
+        # S3 presigned URL (server-internal; browser never sees it)
+        if not (AWS_ACCESS_KEY_ID and S3_BUCKET):
+            raise HTTPException(status_code=404, detail="Track not found")
+        try:
+            upstream = await run_in_threadpool(_presign, key, 3600)
+        except ClientError as e:
+            raise HTTPException(status_code=500, detail=f"S3 error: {e}")
+
     range_header = request.headers.get("range") if request else None
     headers = {"User-Agent": "DJLab/1.0"}
     if range_header:
         headers["Range"] = range_header
 
     def _fetch():
-        return requests.get(upstream, headers=headers, stream=True, timeout=20)
+        return requests.get(upstream, headers=headers, stream=True, timeout=30)
 
     upstream_resp = await run_in_threadpool(_fetch)
     if upstream_resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"Upstream {upstream_resp.status_code}")
 
-    # Pass through range/content headers
     passthrough = {}
     for h in ("Content-Length", "Content-Range", "Accept-Ranges", "Content-Type", "Last-Modified", "ETag"):
         if h in upstream_resp.headers:
             passthrough[h] = upstream_resp.headers[h]
-    if "Accept-Ranges" not in passthrough:
-        passthrough["Accept-Ranges"] = "bytes"
-    if "Content-Type" not in passthrough:
-        passthrough["Content-Type"] = "audio/mpeg"
+    passthrough.setdefault("Accept-Ranges", "bytes")
+    passthrough.setdefault("Content-Type", "audio/mpeg")
     passthrough["Cache-Control"] = "public, max-age=3600"
     passthrough["Access-Control-Allow-Origin"] = "*"
     passthrough["Access-Control-Expose-Headers"] = "Content-Length, Content-Range, Accept-Ranges"

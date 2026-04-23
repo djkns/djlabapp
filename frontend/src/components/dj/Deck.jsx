@@ -116,15 +116,15 @@ export default function Deck({ id, label, accent }) {
     const el = audioElRef.current;
     try {
       let playUrl = track.url;
-      if (!playUrl && track.source === "s3") {
+      if (!playUrl && (track.source === "s3" || track.source === "demo")) {
+        // Resolve to our CORS-safe proxy (works for both sources)
         const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/url?key=${encodeURIComponent(track.key)}`);
         const data = await res.json();
-        playUrl = data.url;
+        playUrl = data.url.startsWith("http") ? data.url : `${process.env.REACT_APP_BACKEND_URL}${data.url}`;
       } else if (track.source === "demo") {
-        // Always resolve through /api/tracks/url to get the CORS-safe proxy URL
+        // demo tracks include a public url on the record; still resolve via backend proxy for CORS
         const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/url?key=${encodeURIComponent(track.key)}`);
         const data = await res.json();
-        // data.url is a relative /api/tracks/stream?key=... path → prefix with backend
         playUrl = data.url.startsWith("http") ? data.url : `${process.env.REACT_APP_BACKEND_URL}${data.url}`;
       }
       el.src = playUrl;
@@ -305,7 +305,7 @@ export default function Deck({ id, label, accent }) {
                 {deck.track?.name || "No track loaded"}
               </div>
               <div className="text-xs text-[#A1A1AA] truncate" data-testid={`deck-${id === "deckA" ? "a" : "b"}-artist`}>
-                {deck.track?.artist || "Drag & drop or pick from library"}
+                {deck.track ? (deck.track.artist || "Unknown artist") : "Drag & drop or pick from library"}
               </div>
               {deck.track?.album && (
                 <div className="text-[10px] text-[#52525B] truncate italic" data-testid={`deck-${id === "deckA" ? "a" : "b"}-album`}>

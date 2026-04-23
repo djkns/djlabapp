@@ -20,7 +20,7 @@ export default function TrackLibrary({ open, onToggle }) {
   };
 
   const filtered = tracks.filter((t) =>
-    (t.name + " " + (t.artist || "")).toLowerCase().includes(q.toLowerCase())
+    (t.name + " " + (t.artist || "") + " " + (t.album || "")).toLowerCase().includes(q.toLowerCase())
   );
 
   return (
@@ -80,7 +80,9 @@ export default function TrackLibrary({ open, onToggle }) {
                   data-testid={`library-row-${t.key}`}
                 >
                   <td className="px-4 py-2.5 text-white truncate max-w-[320px]">{t.name}</td>
-                  <td className="px-4 py-2.5 text-[#A1A1AA] truncate max-w-[200px]">{t.artist || "—"}</td>
+                  <td className="px-4 py-2.5 text-[#A1A1AA] truncate max-w-[260px]">
+                    {t.artist || (t.album ? <span className="italic text-[#52525B]">{t.album}</span> : "—")}
+                  </td>
                   <td className="px-4 py-2.5 font-mono-dj text-[#A1A1AA]">{t.bpm ?? "—"}</td>
                   <td className="px-4 py-2.5">
                     <span className={`text-[9px] tracking-[0.2em] uppercase px-2 py-1 rounded border ${
