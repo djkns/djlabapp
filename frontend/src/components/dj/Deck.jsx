@@ -319,7 +319,7 @@ export default function Deck({ id, label, accent }) {
       data-testid={`deck-${letter}`}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
-      className="relative flex flex-col gap-3 bg-[#141414]/80 backdrop-blur-xl border border-white/10 p-4 rounded-lg overflow-hidden"
+      className="relative flex flex-col gap-3 bg-[#141414]/80 backdrop-blur-xl border border-white/10 p-4 rounded-lg"
     >
       {/* beat-glow overlay */}
       <div
@@ -398,10 +398,10 @@ export default function Deck({ id, label, accent }) {
         {/* Loop overlay markers would go here in v2 */}
       </div>
 
-      {/* Controls row */}
-      <div className="flex items-start gap-3">
+      {/* Controls row 1 — Transport | EQ | Vol | Tempo (always fits ~500px) */}
+      <div className="flex items-start gap-3 flex-wrap">
         {/* Transport */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             data-testid={`deck-${letter}-cue`}
             onClick={cue} onDoubleClick={setCueHere}
@@ -436,38 +436,34 @@ export default function Deck({ id, label, accent }) {
         </div>
 
         {/* EQ */}
-        <div className="flex items-center gap-1 pl-2 border-l border-white/10">
+        <div className="flex items-center gap-1 pl-2 border-l border-white/10 shrink-0">
           <EQKnob label="HI"  value={deck.eq.high} onChange={(v) => setDeckEQ(id, "high", v)} testid={`deck-${letter}-eq-high`} color={accent} />
           <EQKnob label="MID" value={deck.eq.mid}  onChange={(v) => setDeckEQ(id, "mid",  v)} testid={`deck-${letter}-eq-mid`}  color={accent} />
           <EQKnob label="LOW" value={deck.eq.low}  onChange={(v) => setDeckEQ(id, "low",  v)} testid={`deck-${letter}-eq-low`}  color={accent} />
         </div>
 
-        {/* Hot cues + loops */}
-        <div className="flex-1 flex flex-col gap-2 pl-2 border-l border-white/10">
-          <HotCuePad deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
-          <LoopControls deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
+        {/* Vol (horizontal, compact) */}
+        <div className="flex flex-col gap-1 min-w-[100px] flex-1 pl-2 border-l border-white/10">
+          <span className="label-tiny">VOL</span>
+          <input type="range" min={0} max={1} step={0.01} value={deck.volume}
+            onChange={(e) => setDeck(id, { volume: +e.target.value })}
+            className="w-full accent-[#D10A0A]"
+            data-testid={`deck-${letter}-volume`} />
+          <span className="label-tiny">TEMPO ±{deck.tempoRange}%</span>
+          <input type="range" min={-deck.tempoRange} max={deck.tempoRange} step={0.1} value={deck.tempoPct}
+            onChange={(e) => setDeck(id, { tempoPct: +e.target.value })}
+            className="w-full accent-[#FF1F1F]"
+            data-testid={`deck-${letter}-tempo`} />
+          <span className="font-mono-dj text-[10px] text-[#A1A1AA] text-right -mt-0.5">
+            {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
+          </span>
         </div>
+      </div>
 
-        {/* Vol + tempo */}
-        <div className="flex items-end gap-2 pl-2 border-l border-white/10">
-          <div className="flex flex-col items-center">
-            <span className="label-tiny mb-1">VOL</span>
-            <input type="range" min={0} max={1} step={0.01} value={deck.volume}
-              onChange={(e) => setDeck(id, { volume: +e.target.value })}
-              className="fader-vert" style={{ height: 120 }}
-              data-testid={`deck-${letter}-volume`} />
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="label-tiny mb-1">TEMPO ±{deck.tempoRange}%</span>
-            <input type="range" min={-deck.tempoRange} max={deck.tempoRange} step={0.1} value={deck.tempoPct}
-              onChange={(e) => setDeck(id, { tempoPct: +e.target.value })}
-              className="tempo-slider" style={{ height: 120 }}
-              data-testid={`deck-${letter}-tempo`} />
-            <span className="font-mono-dj text-[10px] text-[#A1A1AA] mt-1">
-              {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
-            </span>
-          </div>
-        </div>
+      {/* Controls row 2 — Hot cues + Loop (full deck width) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+        <HotCuePad deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
+        <LoopControls deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
       </div>
 
       {/* Bottom: Sync, range, upload */}
