@@ -11,7 +11,7 @@ import EQKnob from "./EQKnob";
 import HeadphoneSection from "./HeadphoneSection";
 
 // Thin vertical stereo VU bar driven by a deck's analyser
-function ChannelVU({ analyser }) {
+function ChannelVU({ analyser, tall = false }) {
   const [level, setLevel] = useState(0);
   useEffect(() => {
     if (!analyser) return;
@@ -29,7 +29,7 @@ function ChannelVU({ analyser }) {
   }, [analyser]);
   const fill = Math.min(1, level * 3);
   return (
-    <div className="w-2 h-16 bg-[#0c0c0c] rounded overflow-hidden flex flex-col-reverse border border-white/5">
+    <div className={`w-2 ${tall ? "h-[220px]" : "h-16"} bg-[#0c0c0c] rounded overflow-hidden flex flex-col-reverse border border-white/5`}>
       <div className="w-full" style={{
         height: `${fill * 100}%`,
         background: "linear-gradient(to top, #22c55e 0%, #22c55e 55%, #eab308 75%, #FF1F1F 95%)",
@@ -53,8 +53,8 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
     <div className="flex flex-col items-center gap-1 px-1.5" data-testid={`channel-strip-${letter}`}>
       <span className="label-tiny" style={{ color: "#FF1F1F" }}>DECK {deckLabel}</span>
 
-      {/* Knobs + Tempo vertical fader side-by-side */}
-      <div className="flex gap-2 items-start">
+      {/* Knobs | Tempo fader | VU + Volume fader — all side-by-side */}
+      <div className="flex gap-1.5 items-start">
         {/* Knob column */}
         <div className="flex flex-col items-center gap-1">
           <EQKnob label="GAIN" value={deck.trim} min={-12} max={12}
@@ -83,21 +83,27 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
             onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
             onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
             className="fader-vert"
-            style={{ height: 300 }}
+            style={{ height: 220 }}
             data-testid={`channel-${letter}-tempo`}
             title="Double-click to reset"
           />
           <span className="label-tiny">±{deck.tempoRange}%</span>
         </div>
-      </div>
 
-      {/* VU + Volume */}
-      <div className="flex items-end gap-1 mt-1">
-        <ChannelVU analyser={chain?.analyser} />
-        <input type="range" min={0} max={1} step={0.01} value={deck.volume}
-          onChange={(e) => setDeck(deckId, { volume: +e.target.value })}
-          className="fader-vert" style={{ height: 110 }}
-          data-testid={`channel-${letter}-volume`} />
+        {/* Volume fader + VU meter column */}
+        <div className="flex flex-col items-center gap-1 pt-2">
+          <span className="label-tiny">VOL</span>
+          <span className="font-mono-dj text-[9px] text-[#A1A1AA]">
+            {Math.round(deck.volume * 100)}
+          </span>
+          <div className="flex items-end gap-1">
+            <input type="range" min={0} max={1} step={0.01} value={deck.volume}
+              onChange={(e) => setDeck(deckId, { volume: +e.target.value })}
+              className="fader-vert" style={{ height: 220 }}
+              data-testid={`channel-${letter}-volume`} />
+            <ChannelVU analyser={chain?.analyser} tall />
+          </div>
+        </div>
       </div>
     </div>
   );
