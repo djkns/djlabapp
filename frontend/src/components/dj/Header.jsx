@@ -1,7 +1,7 @@
-import { Radio, Gamepad2, Settings } from "lucide-react";
+import { Radio, Gamepad2, Save, FolderOpen } from "lucide-react";
 import { useDJStore } from "@/store/djStore";
 
-export default function Header({ s3Configured, onOpenMidi }) {
+export default function Header({ s3Configured, onOpenMidi, onOpenSaveSet, onOpenSavedSets }) {
   const midi = useDJStore((s) => s.midi);
   return (
     <header data-testid="app-header"
@@ -14,6 +14,28 @@ export default function Header({ s3Configured, onOpenMidi }) {
           <span className="text-[10px] tracking-[0.25em] text-[#A1A1AA] uppercase font-bold">
             NU Vibe / DJsandMCMedia
           </span>
+        </div>
+
+        {/* Save Set buttons — sit in the previously empty header space */}
+        <div className="hidden md:flex items-center gap-1.5 ml-6 pl-6 border-l border-white/10">
+          <button
+            data-testid="header-save-set"
+            onClick={() => onOpenSaveSet?.()}
+            className="flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded border border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30 transition"
+            title="Save current mix metadata"
+          >
+            <Save className="w-3.5 h-3.5" />
+            Save Set
+          </button>
+          <button
+            data-testid="header-saved-sets"
+            onClick={() => onOpenSavedSets?.()}
+            className="flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded border border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30 transition"
+            title="My saved sets"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            My Sets
+          </button>
         </div>
       </div>
 

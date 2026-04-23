@@ -53,7 +53,7 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
     <div className="flex flex-col items-center gap-1 px-1.5" data-testid={`channel-strip-${letter}`}>
       <span className="label-tiny" style={{ color: "#FF1F1F" }}>DECK {deckLabel}</span>
 
-      {/* Knobs | Tempo fader | VU + Volume fader — all side-by-side */}
+      {/* Knobs | Tempo fader — side-by-side (volume fader lives in its own row above the crossfader) */}
       <div className="flex gap-1.5 items-start">
         {/* Knob column */}
         <div className="flex flex-col items-center gap-1">
@@ -89,21 +89,25 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
           />
           <span className="label-tiny">±{deck.tempoRange}%</span>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* Volume fader + VU meter column */}
-        <div className="flex flex-col items-center gap-1 pt-2">
-          <span className="label-tiny">VOL</span>
-          <span className="font-mono-dj text-[9px] text-[#A1A1AA]">
-            {Math.round(deck.volume * 100)}
-          </span>
-          <div className="flex items-end gap-1">
-            <input type="range" min={0} max={1} step={0.01} value={deck.volume}
-              onChange={(e) => setDeck(deckId, { volume: +e.target.value })}
-              className="fader-vert" style={{ height: 220 }}
-              data-testid={`channel-${letter}-volume`} />
-            <ChannelVU analyser={chain?.analyser} tall />
-          </div>
-        </div>
+// Compact volume fader + VU for the crossfader row
+function VolumeFader({ deckId, chain }) {
+  const deck = useDJStore((s) => s[deckId]);
+  const setDeck = useDJStore((s) => s.setDeck);
+  const letter = deckId === "deckA" ? "a" : "b";
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="label-tiny">VOL {letter.toUpperCase()}</span>
+      <div className="flex items-end gap-1">
+        <input type="range" min={0} max={1} step={0.01} value={deck.volume}
+          onChange={(e) => setDeck(deckId, { volume: +e.target.value })}
+          className="fader-vert" style={{ height: 110 }}
+          data-testid={`channel-${letter}-volume`} />
+        <ChannelVU analyser={chain?.analyser} />
       </div>
     </div>
   );
@@ -265,30 +269,8 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
           />
         </div>
 
-        {/* CENTER — Channel strips with compact REC button between them */}
+        {/* CENTER — Channel strips (knobs + tempo fader only) */}
         <ChannelStrip deckId="deckA" deckLabel="A" chain={deckChains?.deckA} />
-
-        {/* Compact REC column between strips — sits at FILTER level */}
-        <div className="flex flex-col items-center justify-end gap-1 px-0.5 pb-1" data-testid="rec-column">
-          <span className="font-mono-dj text-[9px] text-[#A1A1AA] flex items-center gap-1">
-            {recording && <span className="w-1.5 h-1.5 rounded-full bg-[#FF1F1F] beat-pulse" />}
-            <span data-testid="record-elapsed">{fmt(elapsed)}</span>
-          </span>
-          <button
-            data-testid="record-toggle"
-            onClick={recording ? stop : start}
-            title={recording ? "Stop recording" : "Record master bus"}
-            className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
-              recording
-                ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_16px_#FF1F1F] beat-pulse"
-                : "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10 hover:bg-[#D10A0A] hover:text-white"
-            }`}
-          >
-            {recording ? <Square className="w-3.5 h-3.5" fill="currentColor" /> : <span className="w-3 h-3 rounded-full bg-[#FF1F1F]" />}
-          </button>
-          <span className="label-tiny" style={{ color: recording ? "#FF1F1F" : "#A1A1AA" }}>REC</span>
-        </div>
-
         <ChannelStrip deckId="deckB" deckLabel="B" chain={deckChains?.deckB} />
 
         {/* RIGHT — Master column */}
@@ -327,8 +309,36 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         </div>
       </div>
 
-      {/* Crossfader (moved up — directly under decks) */}
-      <div className="pt-2 border-t border-white/5">
+      {/* Volume faders + REC button (centered over crossfader) */}
+      <div className="flex items-end justify-center gap-6 pt-2 border-t border-white/5" data-testid="volume-row">
+        <VolumeFader deckId="deckA" chain={deckChains?.deckA} />
+
+        {/* Small REC button + elapsed between the two volume faders */}
+        <div className="flex flex-col items-center gap-1 pb-1" data-testid="rec-group">
+          <span className="font-mono-dj text-[9px] text-[#A1A1AA] flex items-center gap-1">
+            {recording && <span className="w-1.5 h-1.5 rounded-full bg-[#FF1F1F] beat-pulse" />}
+            <span data-testid="record-elapsed">{fmt(elapsed)}</span>
+          </span>
+          <button
+            data-testid="record-toggle"
+            onClick={recording ? stop : start}
+            title={recording ? "Stop recording" : "Record master bus"}
+            className={`w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all ${
+              recording
+                ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_16px_#FF1F1F] beat-pulse"
+                : "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10 hover:bg-[#D10A0A] hover:text-white"
+            }`}
+          >
+            {recording ? <Square className="w-4 h-4" fill="currentColor" /> : <span className="w-3 h-3 rounded-full bg-[#FF1F1F]" />}
+          </button>
+          <span className="label-tiny" style={{ color: recording ? "#FF1F1F" : "#A1A1AA" }}>REC</span>
+        </div>
+
+        <VolumeFader deckId="deckB" chain={deckChains?.deckB} />
+      </div>
+
+      {/* Crossfader directly below the volume faders */}
+      <div className="pt-2">
         <div className="flex justify-between items-center mb-1 px-1">
           <span className="label-tiny" style={{ color: "#FF1F1F" }}>A</span>
           <span className="label-tiny">CROSSFADER</span>
@@ -344,23 +354,13 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         </div>
       </div>
 
-      {/* Save Set / My Sets / MIDI row (small buttons) */}
-      <div className="flex gap-1 pt-2 border-t border-white/5">
-        <button data-testid="save-set-open"
-          onClick={() => onOpenSaveSet?.(lastRecordingRef.current.duration || elapsed)}
-          className="flex-1 px-2 py-1 rounded border border-white/15 text-[9px] font-bold uppercase tracking-[0.15em] text-[#A1A1AA] hover:text-white hover:border-white/30">
-          Save Set
-        </button>
-        <button data-testid="saved-sets-open" onClick={() => onOpenSavedSets?.()}
-          className="px-2 py-1 rounded border border-white/15 text-[9px] text-[#A1A1AA] hover:text-white hover:border-white/30"
-          title="My Sets">
-          <FolderOpen className="w-3 h-3" />
-        </button>
+      {/* MIDI + webm tag (Save Set moved to header) */}
+      <div className="flex gap-1 pt-2 border-t border-white/5 justify-center">
         <button data-testid="midi-open" onClick={() => onOpenMidi?.()}
-          className={`px-2 py-1 rounded border text-[9px] transition ${
+          className={`flex items-center gap-1.5 px-2 py-1 rounded border text-[9px] tracking-[0.15em] uppercase transition ${
             midi.enabled ? "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10" : "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30"
           }`} title="MIDI">
-          <Gamepad2 className="w-3 h-3" />
+          <Gamepad2 className="w-3 h-3" /> MIDI
         </button>
         <span className="text-[8px] tracking-[0.2em] uppercase text-[#52525B] flex items-center gap-1 px-2">
           <Download className="w-2.5 h-2.5" /> webm
