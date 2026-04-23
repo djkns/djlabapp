@@ -24,6 +24,7 @@ export default function SpinningVinyl({
   onScratchStart,
   onScratchMove,
   onScratchEnd,
+  externalAngle = 0,       // optional extra rotation (radians), e.g. from MIDI jog
 }) {
   const ref = useRef(null);
   const stateRef = useRef({ active: false, baseAngle: 0, lastAngle: 0, totalDelta: 0 });
@@ -87,9 +88,12 @@ export default function SpinningVinyl({
   }, [onScratchMove, onScratchEnd]);
 
   const scratching = scratchAngle != null;
-  // While scratching: transform with absolute angle; otherwise let CSS animate
-  const transform = scratching ? `rotate(${(scratchAngle * 180) / Math.PI}deg)` : undefined;
-  const spinClass = (spinning && !scratching) ? "vinyl-spin" : "";
+  // While scratching: transform with absolute angle; otherwise let CSS animate.
+  // Apply externalAngle (MIDI jog) as an additive nudge when not scratching.
+  const transform = scratching
+    ? `rotate(${(scratchAngle * 180) / Math.PI}deg)`
+    : (externalAngle ? `rotate(${(externalAngle * 180) / Math.PI}deg)` : undefined);
+  const spinClass = (spinning && !scratching && !externalAngle) ? "vinyl-spin" : "";
 
   return (
     <div

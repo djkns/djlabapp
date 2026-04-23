@@ -113,7 +113,12 @@ export default function Deck({ id, label, accent }) {
   // --- Scratch (platter grab) ----------------------------------------------
   // One full rotation = 1.8s of audio (matches 33 1/3 RPM industry standard).
   const SCRATCH_SEC_PER_ROTATION = 1.8;
+  // Typical DJ controller jog wheel = ~128 ticks per full rotation.
+  const JOG_TICKS_PER_ROTATION = 128;
+  const JOG_SEC_PER_TICK = SCRATCH_SEC_PER_ROTATION / JOG_TICKS_PER_ROTATION;
   const scratchRef = useRef({ wasPlaying: false, baseTime: 0, savedRate: 1 });
+  const [jogPulse, setJogPulse] = useState(0);        // animates the vinyl briefly on MIDI jog
+  const jogPulseTimer = useRef(null);
 
   const onScratchStart = () => {
     const el = audioElRef.current;
@@ -257,6 +262,17 @@ export default function Deck({ id, label, accent }) {
       else if (sub === "cue") cue();
       else if (sub === "sync") sync();
       else if (sub === "pfl") setPfl(id, !deck.pflOn);
+      else if (sub === "jog") {
+        // MIDI jog wheel: seek by ticks * JOG_SEC_PER_TICK. Clamp to track bounds.
+        const el = audioElRef.current; if (!el) return;
+        const next = Math.max(0, Math.min((el.duration || 0) - 0.05, (el.currentTime || 0) + value * JOG_SEC_PER_TICK));
+        try { el.currentTime = next; } catch { /* noop */ }
+        setDeck(id, { currentTime: next });
+        // Brief visual pulse on the platter
+        setJogPulse((p) => p + value * 0.12);
+        if (jogPulseTimer.current) clearTimeout(jogPulseTimer.current);
+        jogPulseTimer.current = setTimeout(() => setJogPulse(0), 220);
+      }
       else if (sub === "volume")  setDeck(id, { volume: value });
       else if (sub === "tempo")   setDeck(id, { tempoPct: Math.max(-deck.tempoRange, Math.min(deck.tempoRange, value * deck.tempoRange)) });
       else if (sub === "eq.low")  setDeckEQ(id, "low", value);
@@ -326,6 +342,7 @@ export default function Deck({ id, label, accent }) {
           onScratchStart={onScratchStart}
           onScratchMove={onScratchMove}
           onScratchEnd={onScratchEnd}
+          externalAngle={jogPulse}
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">

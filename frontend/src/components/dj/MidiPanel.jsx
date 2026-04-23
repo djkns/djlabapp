@@ -24,6 +24,8 @@ export const MIDI_CONTROLS = [
   ...[1,2,3,4,5,6,7,8].map(i => ({ id: `deckA.hotcue.${i}`, label: `Deck A · Hot Cue ${i}`, kind: "button" })),
   ...[1,2,3,4,5,6,7,8].map(i => ({ id: `deckB.hotcue.${i}`, label: `Deck B · Hot Cue ${i}`, kind: "button" })),
   { id: "crossfader",   label: "Crossfader",          kind: "bipolar" },
+  { id: "deckA.jog",    label: "Deck A · Jog Wheel",  kind: "jog" },
+  { id: "deckB.jog",    label: "Deck B · Jog Wheel",  kind: "jog" },
   { id: "deckA.volume", label: "Deck A · Volume",     kind: "unipolar" },
   { id: "deckB.volume", label: "Deck B · Volume",     kind: "unipolar" },
   { id: "deckA.tempo",  label: "Deck A · Tempo",      kind: "bipolar" },

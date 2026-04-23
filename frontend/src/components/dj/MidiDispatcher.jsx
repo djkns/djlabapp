@@ -14,6 +14,8 @@ const isButtonControl = (ctrl) =>
   ctrl.includes(".hotcue.") ||
   ctrl === "master.record";
 
+const isJogControl = (ctrl) => ctrl.endsWith(".jog");
+
 /**
  * Listens for MIDI events globally and dispatches `dj:action` CustomEvents.
  */
@@ -50,12 +52,20 @@ export default function MidiDispatcher() {
 
       if (isButtonControl(ctrl)) {
         // Rising edge: any transition from 0 -> >0 is a press.
-        // Also treat bare NOTE_ON with any non-zero velocity as a press.
         const wasZero = lastVal === 0;
         const nowNonZero = data2 > 0;
         if (nowNonZero && wasZero) {
           window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl } }));
         }
+        return;
+      }
+
+      if (isJogControl(ctrl)) {
+        // Relative jog encoding (offset-64): data2=64 is idle; data2>64 = forward ticks; data2<64 = backward.
+        // Works for Hercules, Numark, Reloop, most Traktor-mapped controllers.
+        const delta = data2 - 64;
+        if (delta === 0) return;
+        window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, value: delta } }));
         return;
       }
 
