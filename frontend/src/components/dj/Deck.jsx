@@ -279,6 +279,8 @@ export default function Deck({ id, label, accent }) {
       }
       else if (sub === "volume")  setDeck(id, { volume: value });
       else if (sub === "tempo")   setDeck(id, { tempoPct: Math.max(-deck.tempoRange, Math.min(deck.tempoRange, value * deck.tempoRange)) });
+      else if (sub === "trim")    setDeck(id, { trim: Math.max(-12, Math.min(12, value)) });
+      else if (sub === "filter")  setDeck(id, { filter: Math.max(-1, Math.min(1, value)) });
       else if (sub === "eq.low")  setDeckEQ(id, "low", value);
       else if (sub === "eq.mid")  setDeckEQ(id, "mid", value);
       else if (sub === "eq.high") setDeckEQ(id, "high", value);

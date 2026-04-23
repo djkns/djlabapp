@@ -55,6 +55,10 @@ export const MIDI_GROUPS = [
       { id: "deckB.volume", label: "Deck B · Volume",  kind: "unipolar" },
       { id: "deckA.tempo",  label: "Deck A · Tempo",   kind: "bipolar" },
       { id: "deckB.tempo",  label: "Deck B · Tempo",   kind: "bipolar" },
+      { id: "deckA.trim",   label: "Deck A · Gain / Trim",  kind: "bipolar12" },
+      { id: "deckB.trim",   label: "Deck B · Gain / Trim",  kind: "bipolar12" },
+      { id: "deckA.filter", label: "Deck A · Color Filter", kind: "bipolar" },
+      { id: "deckB.filter", label: "Deck B · Color Filter", kind: "bipolar" },
     ],
   },
   {
@@ -71,11 +75,13 @@ export const MIDI_GROUPS = [
   },
   {
     key: "master",
-    label: "Master · Headphones",
+    label: "Master · Headphones · Mic",
     controls: [
       { id: "master.volume", label: "Master Volume",     kind: "unipolar" },
       { id: "hp.volume",     label: "Headphone Volume",  kind: "unipolar" },
       { id: "hp.mix",        label: "Headphone Mix",     kind: "unipolar" },
+      { id: "mic.enabled",   label: "Mic · Toggle",      kind: "button" },
+      { id: "mic.volume",    label: "Mic Volume",        kind: "unipolar" },
     ],
   },
 ];

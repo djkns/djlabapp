@@ -12,7 +12,8 @@ const isButtonControl = (ctrl) =>
   ctrl.endsWith(".sync") ||
   ctrl.endsWith(".pfl") ||
   ctrl.includes(".hotcue.") ||
-  ctrl === "master.record";
+  ctrl === "master.record" ||
+  ctrl === "mic.enabled";
 
 const isJogControl = (ctrl) => ctrl.endsWith(".jog");
 
@@ -78,9 +79,9 @@ export default function MidiDispatcher() {
 
       // Continuous
       let value;
-      if (ctrl === "crossfader" || ctrl.endsWith(".tempo")) {
+      if (ctrl === "crossfader" || ctrl.endsWith(".tempo") || ctrl.endsWith(".filter")) {
         value = ccToBipolar(data2);
-      } else if (ctrl.includes(".eq.")) {
+      } else if (ctrl.includes(".eq.") || ctrl.endsWith(".trim")) {
         value = ((data2 - 64) / 64) * 12; // -12..+12 dB
       } else {
         value = ccTo01(data2);

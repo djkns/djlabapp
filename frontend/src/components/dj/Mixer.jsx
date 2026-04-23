@@ -228,18 +228,20 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   };
 
   useEffect(() => {
-    const h = (e) => {
+    const h = async (e) => {
       const { action, value } = e.detail;
       if (action === "master.record") (recording ? stop() : start());
       else if (action === "master.volume") setMasterVolume(Math.max(0, Math.min(1.2, value * 1.2)));
       else if (action === "hp.volume") setHp({ volume: value });
       else if (action === "hp.mix") setHp({ mix: value });
       else if (action === "crossfader") setCrossfader(Math.max(-1, Math.min(1, value)));
+      else if (action === "mic.enabled") { await resumeAudioContext(); setMic({ enabled: !mic.enabled }); }
+      else if (action === "mic.volume") setMic({ volume: Math.max(0, Math.min(1.2, value * 1.2)) });
     };
     window.addEventListener("dj:action", h);
     return () => window.removeEventListener("dj:action", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recording]);
+  }, [recording, mic.enabled]);
 
   const fmt = (s) => {
     const m = Math.floor(s / 60); const sec = s % 60;
