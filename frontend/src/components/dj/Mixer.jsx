@@ -265,8 +265,30 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
           />
         </div>
 
-        {/* CENTER — Channel strips */}
+        {/* CENTER — Channel strips with compact REC button between them */}
         <ChannelStrip deckId="deckA" deckLabel="A" chain={deckChains?.deckA} />
+
+        {/* Compact REC column between strips — sits at FILTER level */}
+        <div className="flex flex-col items-center justify-end gap-1 px-0.5 pb-1" data-testid="rec-column">
+          <span className="font-mono-dj text-[9px] text-[#A1A1AA] flex items-center gap-1">
+            {recording && <span className="w-1.5 h-1.5 rounded-full bg-[#FF1F1F] beat-pulse" />}
+            <span data-testid="record-elapsed">{fmt(elapsed)}</span>
+          </span>
+          <button
+            data-testid="record-toggle"
+            onClick={recording ? stop : start}
+            title={recording ? "Stop recording" : "Record master bus"}
+            className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
+              recording
+                ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_16px_#FF1F1F] beat-pulse"
+                : "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10 hover:bg-[#D10A0A] hover:text-white"
+            }`}
+          >
+            {recording ? <Square className="w-3.5 h-3.5" fill="currentColor" /> : <span className="w-3 h-3 rounded-full bg-[#FF1F1F]" />}
+          </button>
+          <span className="label-tiny" style={{ color: recording ? "#FF1F1F" : "#A1A1AA" }}>REC</span>
+        </div>
+
         <ChannelStrip deckId="deckB" deckLabel="B" chain={deckChains?.deckB} />
 
         {/* RIGHT — Master column */}
@@ -322,42 +344,27 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         </div>
       </div>
 
-      {/* Record + Save Set + MIDI (moved below crossfader) */}
-      <div className="flex flex-col gap-1.5 pt-2 border-t border-white/5">
-        <button data-testid="record-toggle" onClick={recording ? stop : start}
-          className={`w-full px-3 py-2 rounded border-2 text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all ${
-            recording
-              ? "border-[#FF1F1F] bg-[#D10A0A] text-white nu-glow-accent"
-              : "border-[#D10A0A] bg-[#D10A0A]/10 text-[#FF1F1F] hover:bg-[#D10A0A] hover:text-white"
-          }`}>
-          {recording ? <Square className="w-3 h-3" fill="currentColor" /> : <Mic className="w-3 h-3" />}
-          {recording ? "Stop" : "Record"}
+      {/* Save Set / My Sets / MIDI row (small buttons) */}
+      <div className="flex gap-1 pt-2 border-t border-white/5">
+        <button data-testid="save-set-open"
+          onClick={() => onOpenSaveSet?.(lastRecordingRef.current.duration || elapsed)}
+          className="flex-1 px-2 py-1 rounded border border-white/15 text-[9px] font-bold uppercase tracking-[0.15em] text-[#A1A1AA] hover:text-white hover:border-white/30">
+          Save Set
         </button>
-        <div className="font-mono-dj text-[10px] text-[#A1A1AA] flex items-center justify-center gap-1.5">
-          {recording && <span className="w-2 h-2 rounded-full bg-[#FF1F1F] beat-pulse" />}
-          <span data-testid="record-elapsed">{fmt(elapsed)}</span>
-        </div>
-        <div className="flex gap-1">
-          <button data-testid="save-set-open"
-            onClick={() => onOpenSaveSet?.(lastRecordingRef.current.duration || elapsed)}
-            className="flex-1 px-2 py-1 rounded border border-white/15 text-[9px] font-bold uppercase tracking-[0.15em] text-[#A1A1AA] hover:text-white hover:border-white/30">
-            Save Set
-          </button>
-          <button data-testid="saved-sets-open" onClick={() => onOpenSavedSets?.()}
-            className="px-2 py-1 rounded border border-white/15 text-[9px] text-[#A1A1AA] hover:text-white hover:border-white/30"
-            title="My Sets">
-            <FolderOpen className="w-3 h-3" />
-          </button>
-          <button data-testid="midi-open" onClick={() => onOpenMidi?.()}
-            className={`px-2 py-1 rounded border text-[9px] transition ${
-              midi.enabled ? "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10" : "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30"
-            }`} title="MIDI">
-            <Gamepad2 className="w-3 h-3" />
-          </button>
-        </div>
-        <div className="text-[8px] tracking-[0.2em] uppercase text-[#52525B] flex items-center justify-center gap-1">
+        <button data-testid="saved-sets-open" onClick={() => onOpenSavedSets?.()}
+          className="px-2 py-1 rounded border border-white/15 text-[9px] text-[#A1A1AA] hover:text-white hover:border-white/30"
+          title="My Sets">
+          <FolderOpen className="w-3 h-3" />
+        </button>
+        <button data-testid="midi-open" onClick={() => onOpenMidi?.()}
+          className={`px-2 py-1 rounded border text-[9px] transition ${
+            midi.enabled ? "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10" : "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30"
+          }`} title="MIDI">
+          <Gamepad2 className="w-3 h-3" />
+        </button>
+        <span className="text-[8px] tracking-[0.2em] uppercase text-[#52525B] flex items-center gap-1 px-2">
           <Download className="w-2.5 h-2.5" /> webm
-        </div>
+        </span>
       </div>
 
       <HeadphoneSection />

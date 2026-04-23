@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
  * Rotary EQ knob. -12dB .. +12dB, 0 center.
  * Drag vertically to turn. Double-click to reset.
  */
-export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#D10A0A" }) {
+export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#D10A0A", size = 48 }) {
   const ref = useRef(null);
   const [dragging, setDragging] = useState(false);
   const startRef = useRef({ y: 0, v: 0 });
@@ -44,15 +44,16 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
   const active = Math.abs(value) > 0.2;
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-center gap-1">
       <div
         ref={ref}
         data-testid={testid}
         onMouseDown={startDrag}
         onTouchStart={startDrag}
         onDoubleClick={() => onChange?.(0)}
-        className="relative w-14 h-14 rounded-full cursor-pointer select-none transition-shadow"
+        className="relative rounded-full cursor-pointer select-none transition-shadow"
         style={{
+          width: size, height: size,
           background:
             "radial-gradient(circle at 35% 30%, #2a2a2a 0%, #0a0a0a 70%)",
           border: "1px solid rgba(255,255,255,0.15)",
