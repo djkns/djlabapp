@@ -1,0 +1,118 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 2: The Performance Pro (Command-center focus, Tactical Minimalist, adapted for DJ Pro Audio)",
+  "emotion_and_vibe": "Pioneer CDJ pro layout, club energy, confident, high-visibility tactical look. It must feel like professional hardware—raw, functional, and responsive. No unnecessary gradients; use deep neon red glow against obsidian black.",
+  "colors": {
+    "background": {
+      "main": "#0A0A0A",
+      "surface": "#141414",
+      "surface_elevated": "#1A1A1A"
+    },
+    "primary": {
+      "main": "#C62800",
+      "glow": "rgba(198, 40, 0, 0.5)"
+    },
+    "accent": {
+      "main": "#FF3B00",
+      "glow": "rgba(255, 59, 0, 0.7)"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#52525B"
+    },
+    "border": {
+      "default": "rgba(255, 255, 255, 0.1)",
+      "focus": "#C62800"
+    }
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Outfit, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "Space Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-3xl md:text-4xl font-black tracking-tighter",
+      "h2": "text-xl md:text-2xl font-bold tracking-tight",
+      "bpm_display": "text-4xl font-mono font-bold text-[#FF3B00]",
+      "body": "text-sm md:text-base text-[#FFFFFF]",
+      "labels": "text-[10px] md:text-xs font-bold tracking-[0.2em] uppercase text-[#A1A1AA]"
+    }
+  },
+  "layout_and_spacing": {
+    "strategy": "Mode B: The Control Room Grid (Data Correlation, Density)",
+    "container": "h-screen w-full overflow-hidden bg-[#0A0A0A] text-white flex flex-col font-sans",
+    "grid_system": "grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 p-4 lg:p-6 h-full",
+    "sections": {
+      "header": "h-14 border-b border-white/10 flex items-center justify-between px-6 bg-[#0A0A0A]",
+      "deck_a": "col-span-1 lg:col-span-5 flex flex-col gap-4 bg-[#141414] border border-white/10 p-6 rounded-lg backdrop-blur-xl relative overflow-hidden",
+      "mixer_center": "col-span-1 lg:col-span-2 flex flex-col gap-6 bg-[#0A0A0A] border-x border-white/5 p-4 items-center justify-between",
+      "deck_b": "col-span-1 lg:col-span-5 flex flex-col gap-4 bg-[#141414] border border-white/10 p-6 rounded-lg backdrop-blur-xl relative overflow-hidden",
+      "library_bottom": "absolute bottom-0 left-0 w-full h-1/3 bg-[#0A0A0A]/95 border-t border-white/10 backdrop-blur-2xl transform translate-y-full transition-transform (can toggle up)"
+    },
+    "alignment": "Optical alignment over geometrical. Elements in the mixer should be perfectly centered vertically and horizontally."
+  },
+  "components": {
+    "buttons": {
+      "play_cue": "w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center hover:border-[#FF3B00] hover:shadow-[0_0_15px_#FF3B00] transition-all bg-[#0A0A0A] text-white",
+      "sync": "px-4 py-2 rounded border border-white/20 bg-transparent text-xs font-bold uppercase tracking-wider hover:bg-[#C62800]/20 hover:border-[#C62800] hover:text-[#FF3B00] transition-all",
+      "record": "px-6 py-2 rounded border border-[#C62800] bg-[#C62800]/10 text-[#FF3B00] text-sm font-bold uppercase hover:bg-[#C62800] hover:text-white transition-all shadow-[0_0_10px_rgba(198,40,0,0.3)]"
+    },
+    "sliders_and_faders": {
+      "volume_fader": "vertical range slider, track bg-white/10, thumb bg-[#A1A1AA] hover:bg-white, with a glowing red fill indicator below the thumb",
+      "crossfader": "horizontal range slider, track bg-[#1A1A1A] border border-white/10 rounded-full h-8, thumb w-12 h-10 bg-[#333] border-2 border-[#A1A1AA] rounded cursor-pointer shadow-[0_0_10px_#C62800] (trail effect via CSS)",
+      "eq_knobs": "circular elements (SVG or CSS), border-white/20, active track color #C62800, thumb indicator white"
+    },
+    "visual_elements": {
+      "waveform": "Wavesurfer.js container: waveColor '#C62800', progressColor '#FF3B00', cursorColor '#FFFFFF', barWidth 2, barRadius 2",
+      "spinning_vinyl": "w-32 h-32 md:w-48 md:h-48 rounded-full border-4 border-[#1A1A1A] shadow-xl relative overflow-hidden flex items-center justify-center bg-black bg-[repeating-radial-gradient(black,black_2px,#1a1a1a_3px,#1a1a1a_4px)]",
+      "vinyl_label": "w-12 h-12 md:w-16 md:h-16 rounded-full bg-[#C62800] flex items-center justify-center text-[8px] font-black text-white uppercase tracking-tighter shadow-inner",
+      "beat_glow": "absolute inset-0 rounded-lg pointer-events-none border border-[#FF3B00] opacity-0 transition-opacity duration-75"
+    }
+  },
+  "motion_and_interactions": {
+    "hover_states": "All buttons and faders must shift border color to #FF3B00 and add drop-shadow.",
+    "active_states": "Play/Cue buttons should have a solid #FF3B00 background or intense inset glow when active.",
+    "animations": {
+      "vinyl_spin": "animate-spin (linear, 2s duration) toggled via state when playing",
+      "beat_pulse": "trigger a quick opacity spike to 0.3 on the beat_glow overlay every beat (can be simulated or synced to WebAudio)",
+      "waveform_load": "fade in (opacity 0 to 1 over 500ms ease-out) when track loaded"
+    }
+  },
+  "surface_strategies": {
+    "decks": "Glassmorphism (The 'Crystal' Variant) - bg-[#141414]/80, backdrop-blur-xl, 1px solid border-white/10. No heavy shadows, rely on the stark contrast of the red waveforms.",
+    "mixer": "Grid Borders (The 'Technical' Look) - Expose the skeleton, solid bg-[#0A0A0A], sharp borders."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure text-to-background ratio is > 4.5:1. Use #A1A1AA for secondary text, never darker.",
+    "testing_attributes": "MUST include data-testid on every control (e.g., data-testid='deck-a-play', data-testid='crossfader', data-testid='eq-high-deck-b')."
+  },
+  "media_and_assets": {
+    "icons": "lucide-react (Play, Pause, SkipForward, Disc3, Settings, Mic, Upload)",
+    "images": {
+      "dj_mixer_reference": {
+        "url": "https://images.pexels.com/photos/754855/pexels-photo-754855.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Professional DJ mixer texture reference (can be used as a low-opacity background for the mixer section or just for vibe)."
+      },
+      "vinyl_texture": {
+        "url": "https://images.pexels.com/photos/5764288/pexels-photo-5764288.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Vinyl grooves reference for the spinning record. Can be used as a CSS background-image inside the spinning_vinyl component."
+      },
+      "nu_vibe_logo": {
+        "url": "https://images.unsplash.com/photo-1614458532080-cd263fd2bd66?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1Mjh8MHwxfHNlYXJjaHwxfHxyZWQlMjBuZW9uJTIwbG9nb3xlbnwwfHx8fDE3NzY5MTEyOTZ8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Neon red atmospheric background, can be used lightly layered behind the main app wrapper for the 'club lighting' reflection."
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "Use Tailwind CSS for all styling. DO NOT use generic Shadcn cards for the main DJ layout, construct the decks using raw HTML + Tailwind for exact precision.",
+    "Use Lucide-react for icons.",
+    "Implement the Layout Grid exactly as specified: A 3-column setup (Deck A - Mixer - Deck B) on desktop.",
+    "Wavesurfer.js is mandatory for the waveforms. Tie it to the Web Audio API context.",
+    "For the EQ knobs, you can use standard <input type='range'> but rotate them vertically, or use a custom SVG rotating knob if possible.",
+    "Ensure all controls have 'data-testid' for testing.",
+    "Add a 'Desktop Only' full-screen overlay warning for screens < 1024px using standard Tailwind display classes (block lg:hidden).",
+    "All text should be unselectable (select-none) to mimic hardware interfaces."
+  ]
+}
