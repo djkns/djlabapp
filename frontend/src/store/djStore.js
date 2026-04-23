@@ -54,6 +54,13 @@ export const useDJStore = create(
         deviceName: null,
         mappings: {},  // { [controlId]: { status, data1, channel } }
         learning: null,// controlId currently in Learn mode
+        // Platter LED output feedback (Hercules T7 style)
+        ledFeedback: {
+          enabled: false,
+          deckA: { cc: 0x30, channel: 0 }, // Default guesses; user can tweak
+          deckB: { cc: 0x30, channel: 1 },
+          ticksPerRotation: 36,             // Typical jog LED steps per full rev
+        },
       },
 
       setDeck: (id, patch) => set((s) => ({ [id]: { ...s[id], ...patch } })),
@@ -89,6 +96,18 @@ export const useDJStore = create(
 
       // MIDI
       setMidi: (patch) => set((s) => ({ midi: { ...s.midi, ...patch } })),
+      setLedFeedback: (patch) => set((s) => ({
+        midi: { ...s.midi, ledFeedback: { ...s.midi.ledFeedback, ...patch } },
+      })),
+      setLedFeedbackDeck: (deckKey, patch) => set((s) => ({
+        midi: {
+          ...s.midi,
+          ledFeedback: {
+            ...s.midi.ledFeedback,
+            [deckKey]: { ...s.midi.ledFeedback[deckKey], ...patch },
+          },
+        },
+      })),
       setMidiMapping: (controlId, mapping) => set((s) => ({
         midi: { ...s.midi, mappings: { ...s.midi.mappings, [controlId]: mapping } },
       })),
@@ -109,7 +128,7 @@ export const useDJStore = create(
       partialize: (s) => ({
         // Only persist user preferences; NOT live state (track, playing, currentTime)
         hp: s.hp,
-        midi: { enabled: s.midi.enabled, deviceId: s.midi.deviceId, deviceName: s.midi.deviceName, mappings: s.midi.mappings },
+        midi: { enabled: s.midi.enabled, deviceId: s.midi.deviceId, deviceName: s.midi.deviceName, mappings: s.midi.mappings, ledFeedback: s.midi.ledFeedback },
         deckA: { baseBPM: s.deckA.baseBPM, tempoRange: s.deckA.tempoRange, volume: s.deckA.volume, eq: s.deckA.eq, trim: s.deckA.trim, filter: s.deckA.filter, keylock: s.deckA.keylock },
         deckB: { baseBPM: s.deckB.baseBPM, tempoRange: s.deckB.tempoRange, volume: s.deckB.volume, eq: s.deckB.eq, trim: s.deckB.trim, filter: s.deckB.filter, keylock: s.deckB.keylock },
       }),

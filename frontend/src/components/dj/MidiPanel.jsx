@@ -4,7 +4,11 @@ import { useDJStore } from "@/store/djStore";
 import {
   requestMidi,
   listMidiInputs,
+  listMidiOutputs,
   setActiveInput,
+  setActiveOutput,
+  pairOutputToInput,
+  getActiveOutputId,
   midiSignature,
   addStateChangeListener,
   typeLabel,
@@ -118,6 +122,7 @@ export default function MidiPanel({ open, onClose }) {
       if (midi.deviceId && list.some((d) => d.id === midi.deviceId) && getActiveInputId() !== midi.deviceId) {
         setActiveInput(midi.deviceId);
         setMidi({ enabled: true });
+        pairOutputToInput();
       }
     })();
     const unsub = addStateChangeListener(() => setDevices(listMidiInputs()));
@@ -205,7 +210,11 @@ export default function MidiPanel({ open, onClose }) {
     const device = devices.find((d) => d.id === deviceId);
     if (!device) return;
     const ok = setActiveInput(deviceId);
-    if (ok) setMidi({ enabled: true, deviceId: device.id, deviceName: device.name });
+    if (ok) {
+      setMidi({ enabled: true, deviceId: device.id, deviceName: device.name });
+      // Auto-pair a MIDI output with the same name (typical for DJ controllers)
+      pairOutputToInput();
+    }
   };
   const disconnect = () => {
     setActiveInput("__none__");
@@ -214,6 +223,15 @@ export default function MidiPanel({ open, onClose }) {
 
   const toggleGroup = (key) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
   const clearAll = () => Object.keys(midi.mappings).forEach((k) => clearMidiMapping(k));
+
+  // LED feedback controls
+  const setLedFeedback = useDJStore((s) => s.setLedFeedback);
+  const setLedFeedbackDeck = useDJStore((s) => s.setLedFeedbackDeck);
+  const [outputs, setOutputs] = useState([]);
+  useEffect(() => {
+    if (!open) return;
+    setOutputs(listMidiOutputs());
+  }, [open, devices]);
 
   if (!open) return null;
   const matchedIsRecent = lastMatched && performance.now() - lastMatched.t < 600;
@@ -322,6 +340,74 @@ export default function MidiPanel({ open, onClose }) {
               Clear all
             </button>
           )}
+        </div>
+
+        {/* Platter LED Feedback (controller OUT) */}
+        <div className="mb-2 p-2 rounded border border-[#00D4FF]/30 bg-[#00D4FF]/5" data-testid="led-feedback-panel">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="label-tiny" style={{ color: "#00D4FF" }}>
+              PLATTER LED FEEDBACK (MIDI OUT)
+            </span>
+            <button
+              data-testid="led-feedback-toggle"
+              onClick={() => setLedFeedback({ enabled: !midi.ledFeedback?.enabled })}
+              className={`px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold border transition ${
+                midi.ledFeedback?.enabled
+                  ? "border-[#00D4FF] text-[#00D4FF] bg-[#00D4FF]/10"
+                  : "border-white/15 text-[#A1A1AA] hover:text-white"
+              }`}
+            >
+              {midi.ledFeedback?.enabled ? "ON" : "OFF"}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <select
+              data-testid="midi-output-select"
+              value={getActiveOutputId() || ""}
+              onChange={(e) => setActiveOutput(e.target.value)}
+              className="flex-1 bg-black/60 border border-white/10 rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#00D4FF]"
+            >
+              <option value="">-- Select a MIDI output --</option>
+              {outputs.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}{o.state === "disconnected" ? " (offline)" : ""}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            {["deckA", "deckB"].map((dk) => {
+              const cfg = midi.ledFeedback?.[dk] || { cc: 0, channel: 0 };
+              return (
+                <div key={dk} className="flex items-center gap-1.5 border border-white/5 rounded px-1.5 py-1">
+                  <span className="font-bold" style={{ color: "#FF1F1F" }}>
+                    {dk === "deckA" ? "A" : "B"}
+                  </span>
+                  <label className="text-[#A1A1AA] flex items-center gap-1">
+                    CC
+                    <input
+                      type="number" min={0} max={127}
+                      value={cfg.cc}
+                      onChange={(e) => setLedFeedbackDeck(dk, { cc: Math.max(0, Math.min(127, +e.target.value || 0)) })}
+                      data-testid={`led-${dk}-cc`}
+                      className="w-12 bg-black/60 border border-white/10 rounded px-1 py-0.5 font-mono-dj text-white text-center focus:outline-none focus:border-[#00D4FF]"
+                    />
+                  </label>
+                  <label className="text-[#A1A1AA] flex items-center gap-1">
+                    CH
+                    <input
+                      type="number" min={1} max={16}
+                      value={cfg.channel + 1}
+                      onChange={(e) => setLedFeedbackDeck(dk, { channel: Math.max(0, Math.min(15, (+e.target.value || 1) - 1)) })}
+                      data-testid={`led-${dk}-ch`}
+                      className="w-10 bg-black/60 border border-white/10 rounded px-1 py-0.5 font-mono-dj text-white text-center focus:outline-none focus:border-[#00D4FF]"
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-[9px] text-[#52525B] mt-1 italic">
+            Tip: Hercules T7 default is CC 0x30 (48) on ch 1 (Deck A) / ch 2 (Deck B). If the LEDs don't move, tweak CC / CH.
+          </div>
         </div>
 
         {/* Grouped mapping list with prominent scrollbar */}

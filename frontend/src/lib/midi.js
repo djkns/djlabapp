@@ -3,6 +3,7 @@
 
 let midiAccess = null;
 let activeInput = null;
+let activeOutput = null;
 const stateListeners = new Set();
 
 export async function requestMidi() {
@@ -63,6 +64,61 @@ export function setActiveInput(deviceId) {
 
 export function getActiveInputId() { return activeInput?.id || null; }
 export function getActiveInputName() { return activeInput?.name || null; }
+
+// ----- MIDI OUTPUT (controller feedback — LED rings, pad colors, etc.) -----
+
+export function listMidiOutputs() {
+  if (!midiAccess) return [];
+  return Array.from(midiAccess.outputs.values()).map((o) => ({
+    id: o.id,
+    name: o.name || o.manufacturer || "Unknown MIDI Output",
+    state: o.state,
+    connection: o.connection,
+  }));
+}
+
+export function setActiveOutput(deviceId) {
+  if (!midiAccess) return false;
+  const output = midiAccess.outputs.get(deviceId);
+  if (!output) return false;
+  activeOutput = output;
+  return true;
+}
+
+/** Auto-pair: find an output device whose name matches the active input's name. */
+export function pairOutputToInput() {
+  if (!midiAccess || !activeInput) return false;
+  const inName = (activeInput.name || "").toLowerCase();
+  const out = Array.from(midiAccess.outputs.values()).find(
+    (o) => (o.name || "").toLowerCase() === inName
+  );
+  if (out) {
+    activeOutput = out;
+    return true;
+  }
+  return false;
+}
+
+export function getActiveOutputId() { return activeOutput?.id || null; }
+export function getActiveOutputName() { return activeOutput?.name || null; }
+
+/** Send a CC (0xB0 | channel) to the active output. channel is 0..15. */
+export function sendCC(channel, cc, value) {
+  if (!activeOutput) return false;
+  try {
+    activeOutput.send([0xB0 | (channel & 0x0F), cc & 0x7F, Math.max(0, Math.min(127, value | 0))]);
+    return true;
+  } catch { return false; }
+}
+
+/** Send a Note On (0x90 | ch). */
+export function sendNoteOn(channel, note, velocity = 127) {
+  if (!activeOutput) return false;
+  try {
+    activeOutput.send([0x90 | (channel & 0x0F), note & 0x7F, Math.max(0, Math.min(127, velocity | 0))]);
+    return true;
+  } catch { return false; }
+}
 
 /**
  * Produce a stable signature for a MIDI event (for matching mappings).

@@ -8,6 +8,7 @@ import SaveSetDialog from "@/components/dj/SaveSetDialog";
 import SavedSetsDrawer from "@/components/dj/SavedSetsDrawer";
 import MidiPanel from "@/components/dj/MidiPanel";
 import MidiDispatcher from "@/components/dj/MidiDispatcher";
+import PlatterLEDFeedback from "@/components/dj/PlatterLEDFeedback";
 import { resumeAudioContext } from "@/lib/audioEngine";
 import { requestMidi, listMidiInputs, setActiveInput, addStateChangeListener, getActiveInputId } from "@/lib/midi";
 import { useDJStore } from "@/store/djStore";
@@ -64,6 +65,7 @@ export default function DJLab() {
     <>
       <DesktopOnlyOverlay />
       <MidiDispatcher />
+      <PlatterLEDFeedback />
       <div data-testid="dj-lab-root"
         className="hidden lg:flex flex-col h-screen w-full overflow-hidden bg-[#0A0A0A] text-white font-sans relative">
         <div className="pointer-events-none absolute inset-0 opacity-30"
