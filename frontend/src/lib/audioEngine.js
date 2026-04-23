@@ -90,6 +90,10 @@ export function createDeckChain(audioEl) {
 
   const source = ctx.createMediaElementSource(audioEl);
 
+  // Trim / Gain (±12dB pre-EQ)
+  const trim = ctx.createGain();
+  trim.gain.value = 1.0;
+
   const low = ctx.createBiquadFilter();
   low.type = "lowshelf"; low.frequency.value = 120; low.gain.value = 0;
 
@@ -99,11 +103,18 @@ export function createDeckChain(audioEl) {
   const high = ctx.createBiquadFilter();
   high.type = "highshelf"; high.frequency.value = 3500; high.gain.value = 0;
 
-  const preFader = ctx.createGain(); // fixed @ 1.0 — tap for cue send
+  // Color filter — single biquad whose type + freq is driven by the filter knob:
+  // value < 0 -> lowpass sweep down, value > 0 -> highpass sweep up, 0 = bypass (allpass).
+  const colorFilter = ctx.createBiquadFilter();
+  colorFilter.type = "allpass";
+  colorFilter.frequency.value = 22000;
+  colorFilter.Q.value = 0.8;
+
+  const preFader = ctx.createGain();
   preFader.gain.value = 1.0;
 
   const cueSend = ctx.createGain();
-  cueSend.gain.value = 0; // off by default; PFL toggles to 1
+  cueSend.gain.value = 0;
 
   const volume = ctx.createGain();
   volume.gain.value = 0.85;
@@ -114,34 +125,43 @@ export function createDeckChain(audioEl) {
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
 
-  // Wire:
-  source.connect(low);
+  // source -> trim -> EQ -> colorFilter -> preFader -> [cue / volume]
+  source.connect(trim);
+  trim.connect(low);
   low.connect(mid);
   mid.connect(high);
-  high.connect(preFader);
+  high.connect(colorFilter);
+  colorFilter.connect(preFader);
 
-  // Cue send (pre-fader)
   preFader.connect(cueSend);
   cueSend.connect(cueBus);
 
-  // Main path (post-EQ, post-volume)
   preFader.connect(volume);
   volume.connect(analyser);
   volume.connect(crossfade);
   crossfade.connect(masterGain);
 
   return {
-    ctx,
-    source,
-    low, mid, high,
-    preFader,
-    cueSend,
-    volume,
-    crossfade,
-    analyser,
-    setLow: (db) => { low.gain.value = db; },
-    setMid: (db) => { mid.gain.value = db; },
+    ctx, source, trim, low, mid, high, colorFilter, preFader, cueSend, volume, crossfade, analyser,
+    setTrim: (db) => { trim.gain.value = Math.pow(10, db / 20); },
+    setLow:  (db) => { low.gain.value  = db; },
+    setMid:  (db) => { mid.gain.value  = db; },
     setHigh: (db) => { high.gain.value = db; },
+    setFilter: (v) => {
+      // v ∈ [-1, 1]. 0 = bypass.
+      if (Math.abs(v) < 0.02) {
+        colorFilter.type = "allpass";
+        colorFilter.frequency.value = 22000;
+      } else if (v < 0) {
+        colorFilter.type = "lowpass";
+        // sweep from 22000 at v=0 down to 150 at v=-1 (exponential)
+        colorFilter.frequency.value = 22000 * Math.pow(150 / 22000, -v);
+      } else {
+        colorFilter.type = "highpass";
+        // sweep from 15 at v=0 up to 8000 at v=1 (exponential)
+        colorFilter.frequency.value = 15 * Math.pow(8000 / 15, v);
+      }
+    },
     setVolume: (v) => { volume.gain.value = v; },
     setCrossfade: (v) => { crossfade.gain.value = v; },
     setCueActive: (on) => { cueSend.gain.value = on ? 1 : 0; },

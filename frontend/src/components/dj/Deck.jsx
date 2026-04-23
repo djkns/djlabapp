@@ -97,12 +97,12 @@ export default function Deck({ id, label, accent }) {
   // PFL / headphone cue on this deck
   useEffect(() => { chainRef.current?.setCueActive(!!deck.pflOn); }, [deck.pflOn]);
 
-  // Tempo (playback rate)
+  // Tempo (playback rate) + keylock
   useEffect(() => {
     const el = audioElRef.current; if (!el) return;
     el.playbackRate = 1 + deck.tempoPct / 100;
-    el.preservesPitch = false;
-  }, [deck.tempoPct]);
+    el.preservesPitch = deck.keylock;
+  }, [deck.tempoPct, deck.keylock]);
 
   const getCurrentTime = () => audioElRef.current?.currentTime || 0;
   const seekTo = (sec) => {
@@ -398,8 +398,8 @@ export default function Deck({ id, label, accent }) {
         {/* Loop overlay markers would go here in v2 */}
       </div>
 
-      {/* Controls row 1 — Transport | EQ | Vol | Tempo (always fits ~500px) */}
-      <div className="flex items-start gap-3 flex-wrap">
+      {/* Controls row 1 — Transport | Keylock | Tempo (horizontal) */}
+      <div className="flex items-center gap-3 flex-wrap">
         {/* Transport */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
@@ -435,28 +435,43 @@ export default function Deck({ id, label, accent }) {
           </button>
         </div>
 
-        {/* EQ */}
-        <div className="flex items-center gap-1 pl-2 border-l border-white/10 shrink-0">
-          <EQKnob label="HI"  value={deck.eq.high} onChange={(v) => setDeckEQ(id, "high", v)} testid={`deck-${letter}-eq-high`} color={accent} />
-          <EQKnob label="MID" value={deck.eq.mid}  onChange={(v) => setDeckEQ(id, "mid",  v)} testid={`deck-${letter}-eq-mid`}  color={accent} />
-          <EQKnob label="LOW" value={deck.eq.low}  onChange={(v) => setDeckEQ(id, "low",  v)} testid={`deck-${letter}-eq-low`}  color={accent} />
+        {/* Keylock + tempo range */}
+        <div className="flex flex-col gap-1 shrink-0 pl-2 border-l border-white/10">
+          <button
+            onClick={() => setDeck(id, { keylock: !deck.keylock })}
+            data-testid={`deck-${letter}-keylock`}
+            title="Keylock — preserve pitch when tempo changes"
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-[0.15em] border-2 transition ${
+              deck.keylock
+                ? "border-[#FF1F1F] text-[#FF1F1F] bg-[#D10A0A]/20 shadow-[0_0_8px_#FF1F1F55]"
+                : "border-white/20 text-[#A1A1AA] hover:border-white/40 hover:text-white"
+            }`}
+          >
+            Keylock
+          </button>
+          <button data-testid={`deck-${letter}-tempo-range`} onClick={toggleTempoRange}
+            className="px-2 py-1 rounded border-2 border-white/15 text-[10px] font-bold uppercase tracking-[0.15em] text-[#A1A1AA] hover:text-white hover:border-white/30">
+            ±{deck.tempoRange}%
+          </button>
         </div>
 
-        {/* Vol (horizontal, compact) */}
-        <div className="flex flex-col gap-1 min-w-[100px] flex-1 pl-2 border-l border-white/10">
-          <span className="label-tiny">VOL</span>
-          <input type="range" min={0} max={1} step={0.01} value={deck.volume}
-            onChange={(e) => setDeck(id, { volume: +e.target.value })}
-            className="w-full accent-[#D10A0A]"
-            data-testid={`deck-${letter}-volume`} />
-          <span className="label-tiny">TEMPO ±{deck.tempoRange}%</span>
+        {/* Tempo (horizontal) + Sync */}
+        <div className="flex flex-col gap-1 flex-1 min-w-[160px] pl-2 border-l border-white/10">
+          <div className="flex items-center justify-between">
+            <span className="label-tiny">TEMPO</span>
+            <span className="font-mono-dj text-[10px] text-[#A1A1AA]">
+              {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
+            </span>
+          </div>
           <input type="range" min={-deck.tempoRange} max={deck.tempoRange} step={0.1} value={deck.tempoPct}
             onChange={(e) => setDeck(id, { tempoPct: +e.target.value })}
             className="w-full accent-[#FF1F1F]"
             data-testid={`deck-${letter}-tempo`} />
-          <span className="font-mono-dj text-[10px] text-[#A1A1AA] text-right -mt-0.5">
-            {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
-          </span>
+          <button data-testid={`deck-${letter}-sync`} onClick={sync}
+            disabled={!otherDeck?.track || !deck.track}
+            className="px-3 py-1 rounded border-2 border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            Sync
+          </button>
         </div>
       </div>
 
@@ -466,17 +481,8 @@ export default function Deck({ id, label, accent }) {
         <LoopControls deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
       </div>
 
-      {/* Bottom: Sync, range, upload */}
+      {/* Bottom: Load file */}
       <div className="flex items-center gap-2">
-        <button data-testid={`deck-${letter}-sync`} onClick={sync}
-          disabled={!otherDeck?.track || !deck.track}
-          className="px-4 py-2 rounded border border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-          Sync
-        </button>
-        <button data-testid={`deck-${letter}-tempo-range`} onClick={toggleTempoRange}
-          className="px-3 py-2 rounded border border-white/10 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] text-[#A1A1AA] hover:text-white hover:border-white/30">
-          ±{deck.tempoRange === 8 ? "16" : "8"}%
-        </button>
         <label className="ml-auto px-3 py-2 rounded border border-white/10 text-[10px] font-bold uppercase tracking-[0.2em] text-[#A1A1AA] hover:text-white hover:border-white/30 cursor-pointer flex items-center gap-2"
           data-testid={`deck-${letter}-upload`}>
           <Upload className="w-3 h-3" />

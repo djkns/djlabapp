@@ -68,10 +68,10 @@ export default function DJLab() {
         <Header s3Configured={s3Configured} onOpenMidi={() => setMidiOpen(true)} />
 
         <main className="flex-1 grid grid-cols-12 gap-4 lg:gap-5 p-4 lg:p-5 pb-16 overflow-hidden relative z-10">
-          <section className="col-span-5 flex flex-col">
+          <section className="col-span-4 flex flex-col">
             <Deck id="deckA" label="A" accent="#FF1F1F" />
           </section>
-          <section className="col-span-2 flex flex-col">
+          <section className="col-span-4 flex flex-col">
             <Mixer
               deckChains={deckChains}
               onOpenSaveSet={(duration) => { setSaveSetDuration(duration); setSaveSetOpen(true); }}
@@ -79,7 +79,7 @@ export default function DJLab() {
               onOpenMidi={() => setMidiOpen(true)}
             />
           </section>
-          <section className="col-span-5 flex flex-col">
+          <section className="col-span-4 flex flex-col">
             <Deck id="deckB" label="B" accent="#FF1F1F" />
           </section>
         </main>

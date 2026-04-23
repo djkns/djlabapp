@@ -14,11 +14,14 @@ const defaultDeck = () => ({
   baseBPM: 120,
   tempoRange: 8,
   tempoPct: 0,
+  keylock: false,
   volume: 0.85,
+  trim: 0,                                   // dB, ±12
+  filter: 0,                                 // -1..1
   eq: { low: 0, mid: 0, high: 0 },
-  hotCues: emptyHotCues(),                     // array of seconds|null
+  hotCues: emptyHotCues(),
   loop: { in: null, out: null, enabled: false, beats: null },
-  pflOn: false,                                // headphone cue for this deck
+  pflOn: false,
 });
 
 export const useDJStore = create(
@@ -98,8 +101,8 @@ export const useDJStore = create(
         // Only persist user preferences; NOT live state (track, playing, currentTime)
         hp: s.hp,
         midi: { enabled: s.midi.enabled, deviceId: s.midi.deviceId, deviceName: s.midi.deviceName, mappings: s.midi.mappings },
-        deckA: { baseBPM: s.deckA.baseBPM, tempoRange: s.deckA.tempoRange, volume: s.deckA.volume, eq: s.deckA.eq },
-        deckB: { baseBPM: s.deckB.baseBPM, tempoRange: s.deckB.tempoRange, volume: s.deckB.volume, eq: s.deckB.eq },
+        deckA: { baseBPM: s.deckA.baseBPM, tempoRange: s.deckA.tempoRange, volume: s.deckA.volume, eq: s.deckA.eq, trim: s.deckA.trim, filter: s.deckA.filter, keylock: s.deckA.keylock },
+        deckB: { baseBPM: s.deckB.baseBPM, tempoRange: s.deckB.tempoRange, volume: s.deckB.volume, eq: s.deckB.eq, trim: s.deckB.trim, filter: s.deckB.filter, keylock: s.deckB.keylock },
       }),
       merge: (persisted, current) => ({
         ...current,
