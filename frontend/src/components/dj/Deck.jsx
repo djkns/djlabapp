@@ -64,22 +64,27 @@ export default function Deck({ id, label, accent }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Wavesurfer
+  // Wavesurfer — scrolling waveform with centered playhead (Rekordbox/Traktor style)
   useEffect(() => {
     if (!waveRef.current || !audioElRef.current) return;
     const ws = WaveSurfer.create({
       container: waveRef.current,
       waveColor: "rgba(209, 10, 10, 0.55)",
       progressColor: accent || "#FF1F1F",
-      cursorColor: "#FFFFFF",
-      cursorWidth: 2,
+      cursorColor: "transparent",      // we render our own centered playhead
+      cursorWidth: 0,
       barWidth: 2,
       barRadius: 2,
-      barGap: 2,
-      height: 64,
+      barGap: 1,
+      height: 96,
       normalize: true,
       media: audioElRef.current,
       interact: true,
+      autoScroll: true,               // scrolls past the cursor as it plays
+      autoCenter: true,               // keeps playhead in the center
+      minPxPerSec: 120,               // zoom: ~10s window at 1200px wide
+      hideScrollbar: true,
+      fillParent: false,
     });
     wsRef.current = ws;
     return () => { ws.destroy(); wsRef.current = null; };
@@ -383,9 +388,39 @@ export default function Deck({ id, label, accent }) {
         </div>
       </div>
 
-      {/* Waveform */}
-      <div className="relative bg-black/40 border border-white/5 rounded p-1.5">
-        <div ref={waveRef} data-testid={`deck-${letter}-waveform`} />
+      {/* Waveform — scrolling with centered playhead */}
+      <div className="relative rounded overflow-hidden border border-white/10"
+           style={{
+             background:
+               // Subtle vertical beat-grid lines + dark gradient
+               "repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 40px), " +
+               "linear-gradient(180deg, #050505 0%, #0b0b0b 50%, #050505 100%)",
+           }}>
+        <div ref={waveRef} data-testid={`deck-${letter}-waveform`} className="h-[96px]" />
+        {/* Centered playhead */}
+        <div className="absolute top-0 bottom-0 left-1/2 pointer-events-none z-10"
+             style={{
+               width: "2px",
+               marginLeft: "-1px",
+               background: accent,
+               boxShadow: `0 0 8px ${accent}, 0 0 2px ${accent}`,
+             }} />
+        {/* Center triangle markers top/bottom */}
+        <div className="absolute top-0 left-1/2 pointer-events-none z-10"
+             style={{
+               marginLeft: "-5px",
+               width: 0, height: 0,
+               borderLeft: "5px solid transparent",
+               borderRight: "5px solid transparent",
+               borderTop: `6px solid ${accent}`,
+             }} />
+        {!deck.track && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="font-mono-dj text-[10px] tracking-[0.3em] uppercase text-white/20">
+              Load a track
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Controls row 1 — Transport | Keylock | Tempo (single compact row, no wrap) */}
