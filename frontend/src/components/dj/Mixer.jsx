@@ -4,7 +4,7 @@ import { useDJStore } from "@/store/djStore";
 import {
   getAudioContext, resumeAudioContext,
   startMasterRecording, stopMasterRecording, crossfadeGains,
-  enableMic, setMicVolume,
+  enableMic, enableMicWithStream, setMicVolume,
   enableHeadphones, setHeadphoneMix, setHeadphoneVolume,
   getDeckChain,
 } from "@/lib/audioEngine";
@@ -185,25 +185,39 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   // This effect only handles the volume update for a mic that's already active.
   useEffect(() => { if (mic.enabled) setMicVolume(mic.volume); }, [mic.volume, mic.enabled]);
 
-  const handleMicToggle = async () => {
-    await resumeAudioContext();
+  const handleMicToggle = () => {
     if (mic.enabled) {
-      await enableMic(false);
-      setMic({ enabled: false });
-      toast.message("Mic off");
-    } else {
-      const ok = await enableMic(true);
-      if (ok) {
-        setMicVolume(mic.volume);
-        setMic({ enabled: true });
-        toast.success("Mic live", { description: "Routed to master bus." });
-      } else {
+      // Disabling is safe to do via async
+      (async () => {
+        await enableMic(false);
+        setMic({ enabled: false });
+        toast.message("Mic off");
+      })();
+      return;
+    }
+    // Firefox / Safari require getUserMedia to be called synchronously inside
+    // the user-gesture click handler. Resume AudioContext in parallel.
+    const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
+    resumeAudioContext();
+    (async () => {
+      try {
+        const stream = await micPromise;
+        const ok = await enableMicWithStream(stream);
+        if (ok) {
+          setMicVolume(mic.volume);
+          setMic({ enabled: true });
+          toast.success("Mic live", { description: "Routed to master bus." });
+        } else {
+          throw new Error("audio graph error");
+        }
+      } catch (err) {
+        console.error("mic denied", err);
         setMic({ enabled: false });
         toast.error("Mic access denied", {
-          description: "Check browser permissions for this exact URL.",
+          description: "Grant mic permission for this exact URL in Firefox settings, then reload.",
         });
       }
-    }
+    })();
   };
 
   // Headphone sync → audio engine

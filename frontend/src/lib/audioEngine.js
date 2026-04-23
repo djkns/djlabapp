@@ -225,27 +225,42 @@ let micSource = null;
 let micGain = null;
 
 export async function enableMic(enabled) {
-  const { ctx, masterGain } = getAudioContext();
   if (enabled) {
     if (micStream) return true; // already on
     try {
       // Simple `audio: true` — Safari rejects complex constraint objects.
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micSource = ctx.createMediaStreamSource(micStream);
-      micGain = ctx.createGain();
-      micGain.gain.value = 0.8;
-      micSource.connect(micGain);
-      micGain.connect(masterGain);
-      return true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      return enableMicWithStream(stream);
     } catch (err) {
       console.error("mic enable failed", err);
-      micStream = null; micSource = null; micGain = null;
       return false;
     }
   } else {
     try { micSource?.disconnect(); } catch { /* ignore */ }
     try { micGain?.disconnect(); } catch { /* ignore */ }
     if (micStream) micStream.getTracks().forEach((t) => t.stop());
+    micStream = null; micSource = null; micGain = null;
+    return false;
+  }
+}
+
+/**
+ * Use this when the caller obtained the MediaStream via a synchronous
+ * getUserMedia() call inside a user gesture (required by Firefox/Safari).
+ */
+export function enableMicWithStream(stream) {
+  const { ctx, masterGain } = getAudioContext();
+  try {
+    micStream = stream;
+    micSource = ctx.createMediaStreamSource(stream);
+    micGain = ctx.createGain();
+    micGain.gain.value = 0.8;
+    micSource.connect(micGain);
+    micGain.connect(masterGain);
+    return true;
+  } catch (err) {
+    console.error("enableMicWithStream failed", err);
+    stream.getTracks().forEach((t) => t.stop());
     micStream = null; micSource = null; micGain = null;
     return false;
   }
