@@ -110,6 +110,40 @@ export default function Deck({ id, label, accent }) {
     audioElRef.current.currentTime = sec;
   };
 
+  // --- Scratch (platter grab) ----------------------------------------------
+  // One full rotation = 1.8s of audio (matches 33 1/3 RPM industry standard).
+  const SCRATCH_SEC_PER_ROTATION = 1.8;
+  const scratchRef = useRef({ wasPlaying: false, baseTime: 0, savedRate: 1 });
+
+  const onScratchStart = () => {
+    const el = audioElRef.current;
+    if (!el || !deck.track) return;
+    scratchRef.current.wasPlaying = !el.paused;
+    scratchRef.current.baseTime = el.currentTime || 0;
+    scratchRef.current.savedRate = el.playbackRate || 1;
+    // Pause natural playback — we drive currentTime by hand while scratching
+    try { el.pause(); } catch { /* noop */ }
+  };
+
+  const onScratchMove = (deltaRad) => {
+    const el = audioElRef.current;
+    if (!el || !deck.track) return;
+    const deltaSec = (deltaRad / (2 * Math.PI)) * SCRATCH_SEC_PER_ROTATION;
+    const next = Math.max(0, Math.min((el.duration || 0) - 0.05, scratchRef.current.baseTime + deltaSec));
+    try { el.currentTime = next; } catch { /* noop */ }
+    setDeck(id, { currentTime: next });
+  };
+
+  const onScratchEnd = () => {
+    const el = audioElRef.current;
+    if (!el) return;
+    el.playbackRate = scratchRef.current.savedRate;
+    el.preservesPitch = false;
+    if (scratchRef.current.wasPlaying) {
+      el.play().then(() => setDeck(id, { playing: true })).catch(() => {});
+    }
+  };
+
   // Load track
   const loadTrack = useCallback(async (track) => {
     if (!track) return;
@@ -284,7 +318,15 @@ export default function Deck({ id, label, accent }) {
 
       {/* Top: vinyl + meta */}
       <div className="flex items-center gap-4 relative">
-        <SpinningVinyl spinning={deck.playing} label={label} size={120} cover={deck.track?.cover || null} />
+        <SpinningVinyl
+          spinning={deck.playing}
+          label={label}
+          size={120}
+          cover={deck.track?.cover || null}
+          onScratchStart={onScratchStart}
+          onScratchMove={onScratchMove}
+          onScratchEnd={onScratchEnd}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="label-tiny" style={{ color: accent }}>DECK {label}</span>
