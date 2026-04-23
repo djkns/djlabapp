@@ -38,7 +38,7 @@ function ChannelVU({ analyser }) {
   );
 }
 
-// Channel strip: Gain → EQ(HIGH/MID/LOW) → Filter → VU + Volume fader
+// Channel strip: Gain → EQ(HIGH/MID/LOW) → Filter → Tempo (vert) → VU + Volume fader
 function ChannelStrip({ deckId, deckLabel, chain }) {
   const deck = useDJStore((s) => s[deckId]);
   const setDeck = useDJStore((s) => s.setDeck);
@@ -52,22 +52,43 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
     <div className="flex flex-col items-center gap-1 px-1.5" data-testid={`channel-strip-${letter}`}>
       <span className="label-tiny" style={{ color: "#FF1F1F" }}>DECK {deckLabel}</span>
 
-      {/* Gain / Trim */}
-      <EQKnob label="GAIN" value={deck.trim} min={-12} max={12}
-        onChange={(v) => setDeck(deckId, { trim: v })}
-        testid={`channel-${letter}-trim`} />
+      {/* Knobs + Tempo vertical fader side-by-side */}
+      <div className="flex gap-2 items-start">
+        {/* Knob column */}
+        <div className="flex flex-col items-center gap-1">
+          <EQKnob label="GAIN" value={deck.trim} min={-12} max={12}
+            onChange={(v) => setDeck(deckId, { trim: v })}
+            testid={`channel-${letter}-trim`} />
+          <EQKnob label="HIGH" value={deck.eq.high} onChange={(v) => setDeckEQ(deckId, "high", v)} testid={`channel-${letter}-eq-high`} />
+          <EQKnob label="MID"  value={deck.eq.mid}  onChange={(v) => setDeckEQ(deckId, "mid",  v)} testid={`channel-${letter}-eq-mid`} />
+          <EQKnob label="LOW"  value={deck.eq.low}  onChange={(v) => setDeckEQ(deckId, "low",  v)} testid={`channel-${letter}-eq-low`} />
+          <EQKnob label="FILTER" value={deck.filter} min={-1} max={1}
+            onChange={(v) => setDeck(deckId, { filter: v })}
+            testid={`channel-${letter}-filter`}
+            color="#FF9500"
+          />
+        </div>
 
-      {/* EQ */}
-      <EQKnob label="HIGH" value={deck.eq.high} onChange={(v) => setDeckEQ(deckId, "high", v)} testid={`channel-${letter}-eq-high`} />
-      <EQKnob label="MID"  value={deck.eq.mid}  onChange={(v) => setDeckEQ(deckId, "mid",  v)} testid={`channel-${letter}-eq-mid`} />
-      <EQKnob label="LOW"  value={deck.eq.low}  onChange={(v) => setDeckEQ(deckId, "low",  v)} testid={`channel-${letter}-eq-low`} />
-
-      {/* Filter (bipolar LP/HP) */}
-      <EQKnob label="FILTER" value={deck.filter} min={-1} max={1}
-        onChange={(v) => setDeck(deckId, { filter: v })}
-        testid={`channel-${letter}-filter`}
-        color="#FF9500"
-      />
+        {/* Tempo / Pitch fader column */}
+        <div className="flex flex-col items-center gap-1 pt-2">
+          <span className="label-tiny">TEMPO</span>
+          <span className="font-mono-dj text-[9px] text-[#A1A1AA]" data-testid={`channel-${letter}-tempo-readout`}>
+            {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
+          </span>
+          <input
+            type="range"
+            min={-deck.tempoRange} max={deck.tempoRange} step={0.1}
+            value={deck.tempoPct}
+            onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
+            onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
+            className="fader-vert"
+            style={{ height: 300 }}
+            data-testid={`channel-${letter}-tempo`}
+            title="Double-click to reset"
+          />
+          <span className="label-tiny">±{deck.tempoRange}%</span>
+        </div>
+      </div>
 
       {/* VU + Volume */}
       <div className="flex items-end gap-1 mt-1">

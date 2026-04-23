@@ -445,21 +445,17 @@ export default function Deck({ id, label, accent }) {
           </button>
         </div>
 
-        {/* Tempo (horizontal) + Sync */}
+        {/* Tempo pct readout + Sync (actual fader moved to mixer strip) */}
         <div className="flex flex-col gap-1 flex-1 min-w-0 pl-2 border-l border-white/10">
           <div className="flex items-center justify-between">
             <span className="label-tiny">TEMPO</span>
-            <span className="font-mono-dj text-[9px] text-[#A1A1AA]">
+            <span className="font-mono-dj text-[10px] font-bold" style={{ color: accent }} data-testid={`deck-${letter}-tempo-readout`}>
               {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
             </span>
           </div>
-          <input type="range" min={-deck.tempoRange} max={deck.tempoRange} step={0.1} value={deck.tempoPct}
-            onChange={(e) => setDeck(id, { tempoPct: +e.target.value })}
-            className="w-full accent-[#FF1F1F]"
-            data-testid={`deck-${letter}-tempo`} />
           <button data-testid={`deck-${letter}-sync`} onClick={sync}
             disabled={!otherDeck?.track || !deck.track}
-            className="px-2 py-0.5 rounded border border-white/20 bg-transparent text-[9px] font-bold uppercase tracking-[0.15em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            className="px-2 py-1 rounded border border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
             Sync
           </button>
         </div>
