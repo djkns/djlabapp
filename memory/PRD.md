@@ -11,18 +11,18 @@ Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Desig
 - Auto-list all audio in bucket/prefix.
 - Recording: WebM (Opus).
 - BPM: auto-detect with manual override (manual numeric input per deck is exposed).
-- Physical controller: **Hercules DJControl T7** (WebMIDI).
+- Physical controller: **Hercules DJControl T7 / Inpulse** (WebMIDI).
 
 ## Architecture
 - `/app/backend/server.py`
   - `GET /api/` → app info + `s3_configured` flag
   - `GET /api/tracks` → list merged S3 + demo tracks
-  - `GET /api/tracks/url?key=…` → demo returns proxy URL; S3 returns proxy URL (CORS-safe)
+  - `GET /api/tracks/url?key=…` → returns proxy URL (CORS-safe)
   - `GET /api/tracks/stream?key=…&source=…` → range-aware CORS-safe proxy
   - `POST/GET /api/mixes` → persist saved mixes in MongoDB
 - `/app/frontend/src/pages/DJLab.jsx` — 3-column layout (Deck A / Mixer / Deck B), Desktop-only overlay, Track Library bottom drawer
 - `/app/frontend/src/components/dj/` — `Deck`, `Mixer`, `SpinningVinyl`, `EQKnob`, `HotCuePad`, `LoopControls`, `HeadphoneSection`, `TrackLibrary`, `Header`, `DesktopOnlyOverlay`, `MidiDispatcher`, `MidiPanel`, `SaveSetDialog`, `SavedSetsDrawer`
-- `/app/frontend/src/lib/audioEngine.js` — shared AudioContext, per-deck chain (`MediaElementSource → Trim → LowShelf → Peaking → HighShelf → ColorFilter → Volume → CrossfadeGain → MasterGain → {destination, MediaStreamDestination}`), master recording via `MediaRecorder` auto-downloading `.webm` (Opus). Headphone PFL bus with device selection.
+- `/app/frontend/src/lib/audioEngine.js` — per-deck chain (`MediaElementSource → Trim → EQ(low/mid/high) → ColorFilter → Volume → CrossfadeGain → MasterGain → {destination, MediaStreamDestination}`), master recording via `MediaRecorder`, headphone PFL bus.
 - `/app/frontend/src/lib/midi.js` — WebMIDI wrapper. 500ms "Smarter Learn" sampler + 30ms noise debounce + PANIC button.
 - `/app/frontend/src/lib/mediaTags.js` — jsmediatags ID3 extraction (album art).
 - `/app/frontend/src/store/djStore.js` — Zustand store for decks, crossfader, recording, MIDI mappings, headphone bus state.
@@ -46,13 +46,13 @@ Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Desig
 - [x] Saved Sets dialog (MongoDB persisted)
 - [x] Desktop-only overlay at <1024px
 - [x] Hercules T7 layout parity (channel strips match physical layout)
-- [x] **Vertical fader click/drag fix (VERIFIED 2026-02-23)**
+- [x] **Vertical fader modern-Chrome compatibility (FIXED 2026-02-23)**
 
 ## Fixed During This Session
-- 2026-02-23 — Verified vertical Volume & Master faders are fully clickable/draggable after prior `transform: rotate(-90deg)` CSS fix. Confirmed via Playwright: top/mid/bottom clicks produce correct values (0.98 / 0.5 / 0.02).
+- **2026-02-23 — Vertical fader rendering in Chrome 124+.** User reported faders were invisible (only tiny thumb square visible). Root cause: Chrome 124+ removed `-webkit-appearance: slider-vertical`. Replaced with W3C standard `writing-mode: vertical-lr; direction: rtl; appearance: auto` in `/app/frontend/src/index.css`. Added proper track gradient, thumb centering via `margin-left: -10px`. Verified via Playwright: Channel vol top→1.0, mid→0.49, bottom→0.0; Master vol top→1.2, bottom→0.0. Works on all modern browsers.
 
 ## Outstanding / Pending
-- **MIDI cross-talk (USER VERIFICATION PENDING)** — 500ms sampler + 30ms debounce + PANIC button implemented. Awaiting user confirmation with Hercules T7.
+- **MIDI cross-talk (USER VERIFICATION PENDING)** — 500ms sampler + 30ms debounce + PANIC button implemented. Awaiting user confirmation with Hercules T7 / Inpulse.
 - **True reverse-scratch audio** — needs `AudioBufferSourceNode` refactor for real backward playback.
 
 ## Backlog (Prioritized)
@@ -67,4 +67,4 @@ Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Desig
 - Refactor `Deck.jsx` (split UI / playback / MIDI subscriptions)
 
 ## Build date
-2026-02-23 — Vertical fader interactivity verified.
+2026-02-23 — Vertical fader Chrome-compat fix verified.
