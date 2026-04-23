@@ -9,6 +9,7 @@ import SavedSetsDrawer from "@/components/dj/SavedSetsDrawer";
 import MidiPanel from "@/components/dj/MidiPanel";
 import MidiDispatcher from "@/components/dj/MidiDispatcher";
 import { resumeAudioContext } from "@/lib/audioEngine";
+import { requestMidi, listMidiInputs, setActiveInput, addStateChangeListener, getActiveInputId } from "@/lib/midi";
 import { useDJStore } from "@/store/djStore";
 
 export default function DJLab() {
