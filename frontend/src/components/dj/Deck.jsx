@@ -76,7 +76,7 @@ export default function Deck({ id, label, accent }) {
       barWidth: 2,
       barRadius: 2,
       barGap: 1,
-      height: 96,
+      height: 80,
       normalize: true,
       media: audioElRef.current,
       interact: true,
@@ -341,7 +341,7 @@ export default function Deck({ id, label, accent }) {
         <SpinningVinyl
           spinning={deck.playing}
           label={label}
-          size={84}
+          size={72}
           cover={deck.track?.cover || null}
           onScratchStart={onScratchStart}
           onScratchMove={onScratchMove}
@@ -396,7 +396,7 @@ export default function Deck({ id, label, accent }) {
                "repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 40px), " +
                "linear-gradient(180deg, #050505 0%, #0b0b0b 50%, #050505 100%)",
            }}>
-        <div ref={waveRef} data-testid={`deck-${letter}-waveform`} className="h-[96px]" />
+        <div ref={waveRef} data-testid={`deck-${letter}-waveform`} className="h-[80px]" />
         {/* Centered playhead */}
         <div className="absolute top-0 bottom-0 left-1/2 pointer-events-none z-10"
              style={{

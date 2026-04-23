@@ -5,10 +5,10 @@ import {
   getAudioContext, resumeAudioContext,
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, setMicVolume,
+  enableHeadphones, setHeadphoneMix, setHeadphoneVolume,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
-import HeadphoneSection from "./HeadphoneSection";
 
 // Thin vertical stereo VU bar driven by a deck's analyser
 function ChannelVU({ analyser, tall = false }) {
@@ -83,7 +83,7 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
             onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
             onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
             className="fader-vert"
-            style={{ height: 220 }}
+            style={{ height: 160 }}
             data-testid={`channel-${letter}-tempo`}
             title="Double-click to reset"
           />
@@ -177,6 +177,11 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   }, [mic.enabled]);
   useEffect(() => { if (mic.enabled) setMicVolume(mic.volume); }, [mic.volume, mic.enabled]);
 
+  // Headphone sync → audio engine
+  useEffect(() => { setHeadphoneMix(hp.mix); }, [hp.mix]);
+  useEffect(() => { setHeadphoneVolume(hp.volume); }, [hp.volume]);
+  useEffect(() => { enableHeadphones(hp.enabled); }, [hp.enabled]);
+
   useEffect(() => {
     const { masterAnalyser } = getAudioContext();
     const buf = new Uint8Array(masterAnalyser.frequencyBinCount);
@@ -210,10 +215,17 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       });
     });
     setRecording(true);
-    intervalRef.current = setInterval(() => { elapsedRef.current += 1; setElapsed(elapsedRef.current); }, 1000);
+    intervalRef.current = setInterval(() => {
+      elapsedRef.current += 1;
+      setElapsed(elapsedRef.current);
+      window.dispatchEvent(new CustomEvent("dj:record-elapsed", { detail: { elapsed: elapsedRef.current } }));
+    }, 1000);
     toast.message("Recording started", { description: "Capturing the master bus." });
   };
-  const stop = () => { stopMasterRecording(); setRecording(false); clearInterval(intervalRef.current); };
+  const stop = () => {
+    stopMasterRecording(); setRecording(false); clearInterval(intervalRef.current);
+    window.dispatchEvent(new CustomEvent("dj:record-elapsed", { detail: { elapsed: 0 } }));
+  };
 
   useEffect(() => {
     const h = (e) => {
@@ -237,11 +249,12 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
 
   return (
     <div data-testid="mixer"
-      className="flex flex-col gap-2 bg-[#0a0a0a] border-x border-white/5 p-3 pb-20 items-stretch overflow-y-auto">
-      {/* Top row: HP col | Deck A strip | Deck B strip | Master col */}
-      <div className="flex gap-1.5 border-b border-white/5 pb-3 justify-center">
+      className="flex flex-col h-full bg-[#0a0a0a] border-x border-white/5 px-2 py-2 items-stretch overflow-hidden gap-1">
+
+      {/* Top: HP | Deck A strip | Deck B strip | Master — content-sized */}
+      <div className="flex gap-1 justify-center min-h-0">
         {/* LEFT — Headphone column */}
-        <div className="flex flex-col items-center gap-2 px-1 pt-[18px]" data-testid="hp-column">
+        <div className="flex flex-col items-center gap-1 px-0.5" data-testid="hp-column">
           <span className="label-tiny" style={{ color: "#A1A1AA" }}>HP</span>
           <button
             data-testid="hp-toggle"
@@ -269,12 +282,12 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
           />
         </div>
 
-        {/* CENTER — Channel strips (knobs + tempo fader only) */}
+        {/* CENTER — Channel strips */}
         <ChannelStrip deckId="deckA" deckLabel="A" chain={deckChains?.deckA} />
         <ChannelStrip deckId="deckB" deckLabel="B" chain={deckChains?.deckB} />
 
         {/* RIGHT — Master column */}
-        <div className="flex flex-col items-center gap-2 px-1 pt-[18px]" data-testid="master-column">
+        <div className="flex flex-col items-center gap-1 px-0.5" data-testid="master-column">
           <span className="label-tiny" style={{ color: "#FF1F1F" }}>MSTR</span>
           <EQKnob
             label="MASTER" value={masterVolume} min={0} max={1.2}
@@ -285,19 +298,19 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
           <MasterVU levels={levels} />
 
           {/* Mic section */}
-          <div className="flex flex-col items-center gap-1 mt-2 pt-2 border-t border-white/10 w-full">
+          <div className="flex flex-col items-center gap-0.5 mt-1 pt-1 border-t border-white/10 w-full">
             <span className="label-tiny" style={{ color: mic.enabled ? "#FF1F1F" : "#A1A1AA" }}>MIC</span>
             <button
               data-testid="mic-toggle"
               onClick={async () => { await resumeAudioContext(); setMic({ enabled: !mic.enabled }); }}
-              className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+              className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${
                 mic.enabled
                   ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_12px_#FF1F1F] beat-pulse"
                   : "border-white/20 text-[#A1A1AA] hover:border-white/50 hover:text-white"
               }`}
               title={mic.enabled ? "Mic is LIVE — click to mute" : "Enable microphone"}
             >
-              {mic.enabled ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+              {mic.enabled ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
             </button>
             <EQKnob
               label="MIC VOL" value={mic.volume} min={0} max={1.2}
@@ -309,37 +322,15 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         </div>
       </div>
 
-      {/* Volume faders + REC button (centered over crossfader) */}
-      <div className="flex items-end justify-center gap-6 pt-2 border-t border-white/5" data-testid="volume-row">
+      {/* Volume faders row — VOL A | VOL B flanking center */}
+      <div className="flex items-end justify-around pt-1 border-t border-white/5" data-testid="volume-row">
         <VolumeFader deckId="deckA" chain={deckChains?.deckA} />
-
-        {/* Small REC button + elapsed between the two volume faders */}
-        <div className="flex flex-col items-center gap-1 pb-1" data-testid="rec-group">
-          <span className="font-mono-dj text-[9px] text-[#A1A1AA] flex items-center gap-1">
-            {recording && <span className="w-1.5 h-1.5 rounded-full bg-[#FF1F1F] beat-pulse" />}
-            <span data-testid="record-elapsed">{fmt(elapsed)}</span>
-          </span>
-          <button
-            data-testid="record-toggle"
-            onClick={recording ? stop : start}
-            title={recording ? "Stop recording" : "Record master bus"}
-            className={`w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all ${
-              recording
-                ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_16px_#FF1F1F] beat-pulse"
-                : "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10 hover:bg-[#D10A0A] hover:text-white"
-            }`}
-          >
-            {recording ? <Square className="w-4 h-4" fill="currentColor" /> : <span className="w-3 h-3 rounded-full bg-[#FF1F1F]" />}
-          </button>
-          <span className="label-tiny" style={{ color: recording ? "#FF1F1F" : "#A1A1AA" }}>REC</span>
-        </div>
-
         <VolumeFader deckId="deckB" chain={deckChains?.deckB} />
       </div>
 
-      {/* Crossfader directly below the volume faders */}
-      <div className="pt-2">
-        <div className="flex justify-between items-center mb-1 px-1">
+      {/* Bottom transport rail — crossfader owns the bottom */}
+      <div className="pt-1 pb-0.5 border-t border-[#D10A0A]/40 bg-gradient-to-b from-transparent to-[#0f0f0f]">
+        <div className="flex justify-between items-center px-1">
           <span className="label-tiny" style={{ color: "#FF1F1F" }}>A</span>
           <span className="label-tiny">CROSSFADER</span>
           <span className="label-tiny" style={{ color: "#FF1F1F" }}>B</span>
@@ -353,21 +344,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             className="fader-horiz w-full" data-testid="crossfader" />
         </div>
       </div>
-
-      {/* MIDI + webm tag (Save Set moved to header) */}
-      <div className="flex gap-1 pt-2 border-t border-white/5 justify-center">
-        <button data-testid="midi-open" onClick={() => onOpenMidi?.()}
-          className={`flex items-center gap-1.5 px-2 py-1 rounded border text-[9px] tracking-[0.15em] uppercase transition ${
-            midi.enabled ? "border-[#D10A0A] text-[#FF1F1F] bg-[#D10A0A]/10" : "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30"
-          }`} title="MIDI">
-          <Gamepad2 className="w-3 h-3" /> MIDI
-        </button>
-        <span className="text-[8px] tracking-[0.2em] uppercase text-[#52525B] flex items-center gap-1 px-2">
-          <Download className="w-2.5 h-2.5" /> webm
-        </span>
-      </div>
-
-      <HeadphoneSection />
     </div>
   );
 }

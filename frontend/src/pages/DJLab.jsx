@@ -24,6 +24,14 @@ export default function DJLab() {
 
   const deckA = useDJStore((s) => s.deckA);
   const deckB = useDJStore((s) => s.deckB);
+  const recording = useDJStore((s) => s.recording);
+  const [recordElapsed, setRecordElapsed] = useState(0);
+  // Sync elapsed seconds from a window event dispatched by the Mixer
+  useEffect(() => {
+    const h = (e) => setRecordElapsed(e.detail?.elapsed || 0);
+    window.addEventListener("dj:record-elapsed", h);
+    return () => window.removeEventListener("dj:record-elapsed", h);
+  }, []);
 
   useEffect(() => {
     fetch(`${process.env.REACT_APP_BACKEND_URL}/api/`)
@@ -70,13 +78,17 @@ export default function DJLab() {
           onOpenMidi={() => setMidiOpen(true)}
           onOpenSaveSet={() => { setSaveSetDuration(0); setSaveSetOpen(true); }}
           onOpenSavedSets={() => setSavedSetsOpen(true)}
+          recording={recording}
+          elapsed={recordElapsed}
+          onToggleRecord={() => window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: "master.record" } }))}
         />
 
-        <main className="flex-1 grid grid-cols-12 gap-3 p-3 pb-24 overflow-hidden relative z-10">
-          <section className="col-span-4 flex flex-col">
+        <main className="flex-1 grid grid-cols-12 gap-3 p-3 overflow-hidden relative z-10 min-h-0"
+              style={{ gridTemplateRows: "1fr" }}>
+          <section className="col-span-4 flex flex-col min-h-0 h-full overflow-hidden">
             <Deck id="deckA" label="A" accent="#FF1F1F" />
           </section>
-          <section className="col-span-4 flex flex-col">
+          <section className="col-span-4 flex flex-col min-h-0 h-full overflow-hidden">
             <Mixer
               deckChains={deckChains}
               onOpenSaveSet={(duration) => { setSaveSetDuration(duration); setSaveSetOpen(true); }}
@@ -84,7 +96,7 @@ export default function DJLab() {
               onOpenMidi={() => setMidiOpen(true)}
             />
           </section>
-          <section className="col-span-4 flex flex-col">
+          <section className="col-span-4 flex flex-col min-h-0 h-full overflow-hidden">
             <Deck id="deckB" label="B" accent="#FF1F1F" />
           </section>
         </main>
