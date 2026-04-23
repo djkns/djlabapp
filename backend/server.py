@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
@@ -12,6 +13,13 @@ import uuid
 from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
+import requests
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -191,15 +199,17 @@ async def list_tracks(source: Optional[str] = Query(None, description="'s3' | 'd
 @api_router.get("/tracks/url")
 async def get_track_url(key: str = Query(...), expires: int = Query(3600, ge=60, le=86400)):
     """Return a playable URL for a given track key.
-    - For demo tracks: returns the public URL directly.
+    - For demo tracks: returns a same-origin proxy URL (CORS-safe for Web Audio API).
     - For S3 tracks: returns a presigned URL."""
     demo = next((t for t in DEMO_TRACKS if t["key"] == key), None)
     if demo:
-        return {"url": demo["url"], "key": key, "expires_in": 0, "source": "demo"}
+        # Return our own /api/tracks/stream endpoint — SoundHelix doesn't send CORS
+        backend_base = os.environ.get('PUBLIC_BACKEND_URL', '')  # optional absolute
+        stream_url = f"{backend_base}/api/tracks/stream?key={key}" if backend_base else f"/api/tracks/stream?key={key}"
+        return {"url": stream_url, "key": key, "expires_in": 0, "source": "demo"}
 
-    if S3_PREFIX and not key.startswith(S3_PREFIX):
-        # allow if no prefix configured
-        pass
+    if not (AWS_ACCESS_KEY_ID and S3_BUCKET):
+        raise HTTPException(status_code=404, detail="Track not found")
 
     try:
         url = await run_in_threadpool(_presign, key, expires)
@@ -208,6 +218,53 @@ async def get_track_url(key: str = Query(...), expires: int = Query(3600, ge=60,
         raise
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"S3 error: {e}")
+
+
+@api_router.get("/tracks/stream")
+async def stream_demo_track(key: str = Query(...), request: Request = None):
+    """Proxy demo tracks with proper CORS + Range support so the browser's
+    Web Audio API (crossOrigin='anonymous') can decode them."""
+    demo = next((t for t in DEMO_TRACKS if t["key"] == key), None)
+    if not demo:
+        raise HTTPException(status_code=404, detail="Demo track not found")
+
+    upstream = demo["url"]
+    range_header = request.headers.get("range") if request else None
+    headers = {"User-Agent": "DJLab/1.0"}
+    if range_header:
+        headers["Range"] = range_header
+
+    def _fetch():
+        return requests.get(upstream, headers=headers, stream=True, timeout=20)
+
+    upstream_resp = await run_in_threadpool(_fetch)
+    if upstream_resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Upstream {upstream_resp.status_code}")
+
+    # Pass through range/content headers
+    passthrough = {}
+    for h in ("Content-Length", "Content-Range", "Accept-Ranges", "Content-Type", "Last-Modified", "ETag"):
+        if h in upstream_resp.headers:
+            passthrough[h] = upstream_resp.headers[h]
+    if "Accept-Ranges" not in passthrough:
+        passthrough["Accept-Ranges"] = "bytes"
+    if "Content-Type" not in passthrough:
+        passthrough["Content-Type"] = "audio/mpeg"
+    passthrough["Cache-Control"] = "public, max-age=3600"
+    passthrough["Access-Control-Allow-Origin"] = "*"
+    passthrough["Access-Control-Expose-Headers"] = "Content-Length, Content-Range, Accept-Ranges"
+
+    def iter_bytes():
+        for chunk in upstream_resp.iter_content(chunk_size=64 * 1024):
+            if chunk:
+                yield chunk
+
+    return StreamingResponse(
+        iter_bytes(),
+        status_code=upstream_resp.status_code,
+        headers=passthrough,
+        media_type=passthrough["Content-Type"],
+    )
 
 
 @api_router.post("/mixes", response_model=SavedMix)
@@ -238,10 +295,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-)
 logger = logging.getLogger(__name__)
 
 

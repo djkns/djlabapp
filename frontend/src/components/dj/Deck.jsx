@@ -5,6 +5,7 @@ import SpinningVinyl from "./SpinningVinyl";
 import EQKnob from "./EQKnob";
 import { useDJStore } from "@/store/djStore";
 import { createDeckChain, resumeAudioContext } from "@/lib/audioEngine";
+import { toast } from "sonner";
 
 const formatTime = (s) => {
   if (!s || isNaN(s)) return "0:00";
@@ -118,6 +119,12 @@ export default function Deck({ id, label, accent }) {
         const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/url?key=${encodeURIComponent(track.key)}`);
         const data = await res.json();
         playUrl = data.url;
+      } else if (track.source === "demo") {
+        // Always resolve through /api/tracks/url to get the CORS-safe proxy URL
+        const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/url?key=${encodeURIComponent(track.key)}`);
+        const data = await res.json();
+        // data.url is a relative /api/tracks/stream?key=... path → prefix with backend
+        playUrl = data.url.startsWith("http") ? data.url : `${process.env.REACT_APP_BACKEND_URL}${data.url}`;
       }
       el.src = playUrl;
       el.load();
@@ -179,12 +186,17 @@ export default function Deck({ id, label, accent }) {
 
   // Play/Pause/Cue
   const play = async () => {
+    if (!deck.track) {
+      toast.error("Load a track first", { description: `Deck ${label} is empty.` });
+      return;
+    }
     await resumeAudioContext();
     try {
       await audioElRef.current.play();
       setDeck(id, { playing: true });
     } catch (e) {
       console.error("play failed", e);
+      toast.error("Playback failed", { description: e.message || "Audio element refused to start." });
     }
   };
   const pause = () => {

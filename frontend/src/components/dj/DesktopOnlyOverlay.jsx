@@ -2,7 +2,7 @@ import { Monitor } from "lucide-react";
 
 export default function DesktopOnlyOverlay() {
   return (
-    <div className="fixed inset-0 z-[100] lg:hidden bg-[#0A0A0A] flex flex-col items-center justify-center p-8 text-center">
+    <div data-testid="desktop-only-overlay" className="fixed inset-0 z-[100] lg:hidden bg-[#0A0A0A] flex flex-col items-center justify-center p-8 text-center">
       <div className="w-20 h-20 rounded-full bg-[#C62800]/15 border border-[#C62800]/40 flex items-center justify-center mb-6 nu-glow-primary">
         <Monitor className="w-10 h-10 text-[#FF3B00]" />
       </div>
