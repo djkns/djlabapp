@@ -102,6 +102,24 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
   );
 }
 
+// Master VU bars (stereo)
+function MasterVU({ levels }) {
+  const meterFill = (v) => Math.min(1, v * 3);
+  return (
+    <div className="flex justify-center gap-1">
+      {[0, 1].map((ch) => (
+        <div key={ch} className="w-2 h-32 bg-[#0c0c0c] rounded overflow-hidden flex flex-col-reverse border border-white/5">
+          <div className="w-full" style={{
+            height: `${meterFill(ch === 0 ? levels.l : levels.r) * 100}%`,
+            background: "linear-gradient(to top, #22c55e 0%, #22c55e 55%, #eab308 75%, #FF1F1F 95%)",
+            transition: "height 40ms linear",
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOpenMidi }) {
   const crossfader = useDJStore((s) => s.crossfader);
   const setCrossfader = useDJStore((s) => s.setCrossfader);
@@ -110,6 +128,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   const recording = useDJStore((s) => s.recording);
   const setRecording = useDJStore((s) => s.setRecording);
   const setHp = useDJStore((s) => s.setHp);
+  const hp = useDJStore((s) => s.hp);
   const midi = useDJStore((s) => s.midi);
 
   const [elapsed, setElapsed] = useState(0);
@@ -190,34 +209,51 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   return (
     <div data-testid="mixer"
       className="flex flex-col gap-2 bg-[#0a0a0a] border-x border-white/5 p-3 pb-20 items-stretch overflow-y-auto">
-      {/* Two channel strips side-by-side */}
-      <div className="grid grid-cols-2 gap-2 border-b border-white/5 pb-3">
+      {/* Top row: HP col | Deck A strip | Deck B strip | Master col */}
+      <div className="flex gap-1.5 border-b border-white/5 pb-3 justify-center">
+        {/* LEFT — Headphone column */}
+        <div className="flex flex-col items-center gap-2 px-1 pt-[18px]" data-testid="hp-column">
+          <span className="label-tiny" style={{ color: "#A1A1AA" }}>HP</span>
+          <button
+            data-testid="hp-toggle"
+            onClick={() => setHp({ enabled: !hp.enabled })}
+            className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all ${
+              hp.enabled
+                ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_10px_#FF1F1F]"
+                : "border-white/20 text-[#A1A1AA] hover:border-white/50"
+            }`}
+            title={hp.enabled ? "Disable headphones" : "Enable headphones"}
+          >
+            <HpIcon className="w-3 h-3" />
+          </button>
+          <EQKnob
+            label="CUE MIX" value={hp.mix} min={0} max={1}
+            onChange={(v) => setHp({ mix: Math.max(0, Math.min(1, v)) })}
+            testid="hp-mix"
+            color="#00D4FF"
+          />
+          <EQKnob
+            label="HP VOL" value={hp.volume} min={0} max={1.2}
+            onChange={(v) => setHp({ volume: Math.max(0, Math.min(1.2, v)) })}
+            testid="hp-volume"
+            color="#00D4FF"
+          />
+        </div>
+
+        {/* CENTER — Channel strips */}
         <ChannelStrip deckId="deckA" deckLabel="A" chain={deckChains?.deckA} />
         <ChannelStrip deckId="deckB" deckLabel="B" chain={deckChains?.deckB} />
-      </div>
 
-      {/* Master VU + Master Volume */}
-      <div className="flex items-end justify-center gap-3 py-2 border-b border-white/5">
-        <div className="text-center">
-          <span className="label-tiny mb-1 block">MASTER</span>
-          <div className="flex justify-center gap-1">
-            {[0, 1].map((ch) => (
-              <div key={ch} className="w-2 h-16 bg-[#0c0c0c] rounded overflow-hidden flex flex-col-reverse border border-white/5">
-                <div className="w-full" style={{
-                  height: `${meterFill(ch === 0 ? levels.l : levels.r) * 100}%`,
-                  background: "linear-gradient(to top, #22c55e 0%, #22c55e 55%, #eab308 75%, #FF1F1F 95%)",
-                  transition: "height 40ms linear",
-                }} />
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-col items-center">
-          <span className="label-tiny">MSTR VOL</span>
-          <input type="range" min={0} max={1.2} step={0.01} value={masterVolume}
-            onChange={(e) => setMasterVolume(+e.target.value)}
-            className="fader-vert" style={{ height: 70 }}
-            data-testid="master-volume" />
+        {/* RIGHT — Master column */}
+        <div className="flex flex-col items-center gap-2 px-1 pt-[18px]" data-testid="master-column">
+          <span className="label-tiny" style={{ color: "#FF1F1F" }}>MSTR</span>
+          <EQKnob
+            label="MASTER" value={masterVolume} min={0} max={1.2}
+            onChange={(v) => setMasterVolume(Math.max(0, Math.min(1.2, v)))}
+            testid="master-volume"
+            color="#FF1F1F"
+          />
+          <MasterVU levels={levels} />
         </div>
       </div>
 
