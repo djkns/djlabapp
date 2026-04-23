@@ -4,14 +4,26 @@ import Deck from "@/components/dj/Deck";
 import Mixer from "@/components/dj/Mixer";
 import TrackLibrary from "@/components/dj/TrackLibrary";
 import DesktopOnlyOverlay from "@/components/dj/DesktopOnlyOverlay";
+import SaveSetDialog from "@/components/dj/SaveSetDialog";
+import SavedSetsDrawer from "@/components/dj/SavedSetsDrawer";
+import MidiPanel from "@/components/dj/MidiPanel";
+import MidiDispatcher from "@/components/dj/MidiDispatcher";
 import { resumeAudioContext } from "@/lib/audioEngine";
+import { useDJStore } from "@/store/djStore";
 
 export default function DJLab() {
   const [libOpen, setLibOpen] = useState(false);
   const [s3Configured, setS3Configured] = useState(false);
   const [deckChains, setDeckChains] = useState({ deckA: null, deckB: null });
 
-  // Root info
+  const [saveSetOpen, setSaveSetOpen] = useState(false);
+  const [saveSetDuration, setSaveSetDuration] = useState(0);
+  const [savedSetsOpen, setSavedSetsOpen] = useState(false);
+  const [midiOpen, setMidiOpen] = useState(false);
+
+  const deckA = useDJStore((s) => s.deckA);
+  const deckB = useDJStore((s) => s.deckB);
+
   useEffect(() => {
     fetch(`${process.env.REACT_APP_BACKEND_URL}/api/`)
       .then((r) => r.json())
@@ -19,20 +31,15 @@ export default function DJLab() {
       .catch(() => {});
   }, []);
 
-  // Once both decks have created their MediaElementSources, expose their chain refs
-  // via a registry on window so Mixer can set crossfader gains.
   useEffect(() => {
-    const handler = (e) => {
+    const h = (e) => {
       const { deckId, chain } = e.detail || {};
-      if (deckId && chain) {
-        setDeckChains((prev) => ({ ...prev, [deckId]: chain }));
-      }
+      if (deckId && chain) setDeckChains((p) => ({ ...p, [deckId]: chain }));
     };
-    window.addEventListener("dj:chain-ready", handler);
-    return () => window.removeEventListener("dj:chain-ready", handler);
+    window.addEventListener("dj:chain-ready", h);
+    return () => window.removeEventListener("dj:chain-ready", h);
   }, []);
 
-  // Safety: resume AudioContext on first user interaction
   useEffect(() => {
     const onFirstTouch = () => {
       resumeAudioContext();
@@ -42,33 +49,36 @@ export default function DJLab() {
     return () => window.removeEventListener("click", onFirstTouch);
   }, []);
 
+  const tracksUsed = [deckA.track, deckB.track].filter(Boolean).map((t) => ({ key: t.key, name: t.name, source: t.source }));
+
   return (
     <>
       <DesktopOnlyOverlay />
-      <div
-        data-testid="dj-lab-root"
-        className="hidden lg:flex flex-col h-screen w-full overflow-hidden bg-[#0A0A0A] text-white font-sans relative"
-      >
-        {/* Ambient club lighting */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-30"
+      <MidiDispatcher />
+      <div data-testid="dj-lab-root"
+        className="hidden lg:flex flex-col h-screen w-full overflow-hidden bg-[#0A0A0A] text-white font-sans relative">
+        <div className="pointer-events-none absolute inset-0 opacity-30"
           style={{
             background:
               "radial-gradient(1000px 500px at 20% 0%, rgba(209,10,10,0.12) 0%, transparent 60%)," +
               "radial-gradient(900px 500px at 80% 100%, rgba(255,31,31,0.08) 0%, transparent 65%)",
-          }}
-        />
+          }} />
 
-        <Header s3Configured={s3Configured} />
+        <Header s3Configured={s3Configured} onOpenMidi={() => setMidiOpen(true)} />
 
-        <main className="flex-1 grid grid-cols-12 gap-4 lg:gap-6 p-4 lg:p-6 pb-20 overflow-hidden relative z-10">
-          <section className="col-span-5">
+        <main className="flex-1 grid grid-cols-12 gap-4 lg:gap-5 p-4 lg:p-5 pb-16 overflow-hidden relative z-10">
+          <section className="col-span-5 flex flex-col">
             <Deck id="deckA" label="A" accent="#FF1F1F" />
           </section>
-          <section className="col-span-2">
-            <Mixer deckChains={deckChains} />
+          <section className="col-span-2 flex flex-col">
+            <Mixer
+              deckChains={deckChains}
+              onOpenSaveSet={(duration) => { setSaveSetDuration(duration); setSaveSetOpen(true); }}
+              onOpenSavedSets={() => setSavedSetsOpen(true)}
+              onOpenMidi={() => setMidiOpen(true)}
+            />
           </section>
-          <section className="col-span-5">
+          <section className="col-span-5 flex flex-col">
             <Deck id="deckB" label="B" accent="#FF1F1F" />
           </section>
         </main>
@@ -78,6 +88,15 @@ export default function DJLab() {
         <footer className="fixed top-auto bottom-11 right-6 text-[9px] tracking-[0.25em] uppercase text-[#52525B] pointer-events-none z-40">
           Part of the NU Vibe Network
         </footer>
+
+        <SaveSetDialog
+          open={saveSetOpen}
+          onClose={() => setSaveSetOpen(false)}
+          defaultDuration={saveSetDuration}
+          defaultTracks={tracksUsed}
+        />
+        <SavedSetsDrawer open={savedSetsOpen} onClose={() => setSavedSetsOpen(false)} />
+        <MidiPanel open={midiOpen} onClose={() => setMidiOpen(false)} />
       </div>
     </>
   );

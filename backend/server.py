@@ -185,12 +185,14 @@ class SavedMix(BaseModel):
     duration_seconds: float
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     notes: Optional[str] = ""
+    tracks_used: Optional[List[dict]] = []
 
 
 class SavedMixCreate(BaseModel):
     name: str
     duration_seconds: float
     notes: Optional[str] = ""
+    tracks_used: Optional[List[dict]] = []
 
 
 @api_router.get("/")
