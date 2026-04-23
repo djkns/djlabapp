@@ -6,6 +6,7 @@ import {
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, setMicVolume,
   enableHeadphones, setHeadphoneMix, setHeadphoneVolume,
+  getDeckChain,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
@@ -151,9 +152,26 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   const [levels, setLevels] = useState({ l: 0, r: 0 });
 
   useEffect(() => {
+    const applyCrossfade = () => {
+      const { a, b } = crossfadeGains(useDJStore.getState().crossfader);
+      getDeckChain("deckA")?.setCrossfade?.(a);
+      getDeckChain("deckB")?.setCrossfade?.(b);
+    };
+    // Apply whenever a new deck chain registers
+    window.addEventListener("dj:chain-ready", applyCrossfade);
+    // Also do one initial pass in case chains already exist
+    applyCrossfade();
+    return () => window.removeEventListener("dj:chain-ready", applyCrossfade);
+  }, []);
+
+  useEffect(() => {
     const { a, b } = crossfadeGains(crossfader);
-    deckChains?.deckA?.setCrossfade?.(a);
-    deckChains?.deckB?.setCrossfade?.(b);
+    // Prefer module-level registry (avoids React effect ordering race); fall
+    // back to props for decks that haven't registered yet.
+    const chA = getDeckChain("deckA") || deckChains?.deckA;
+    const chB = getDeckChain("deckB") || deckChains?.deckB;
+    chA?.setCrossfade?.(a);
+    chB?.setCrossfade?.(b);
   }, [crossfader, deckChains]);
 
   useEffect(() => {
@@ -312,7 +330,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
               }`}
               title={mic.enabled ? "Mic is LIVE — click to mute" : "Enable microphone"}
             >
-              {mic.enabled ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
+              {mic.enabled ? <Mic className="w-3 h-3 pointer-events-none" /> : <MicOff className="w-3 h-3 pointer-events-none" />}
             </button>
             <EQKnob
               label="MIC VOL" value={mic.volume} min={0} max={1.2}

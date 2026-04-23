@@ -175,6 +175,13 @@ export function crossfadeGains(pos) {
   return { a, b };
 }
 
+// Module-level registry so Mixer can reach deck chains without relying on
+// React effect ordering (which caused crossfader to never apply gains).
+const deckChains = {};
+export function registerDeckChain(deckId, chain) { deckChains[deckId] = chain; }
+export function getDeckChain(deckId) { return deckChains[deckId] || null; }
+export function getAllDeckChains() { return deckChains; }
+
 // Headphone helpers
 export function setHeadphoneMix(value01) {
   // 0 = full master, 1 = full cue

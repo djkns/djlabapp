@@ -6,7 +6,7 @@ import EQKnob from "./EQKnob";
 import HotCuePad from "./HotCuePad";
 import LoopControls from "./LoopControls";
 import { useDJStore } from "@/store/djStore";
-import { createDeckChain, resumeAudioContext } from "@/lib/audioEngine";
+import { createDeckChain, registerDeckChain, resumeAudioContext } from "@/lib/audioEngine";
 import { readTags } from "@/lib/mediaTags";
 import { toast } from "sonner";
 
@@ -43,6 +43,7 @@ export default function Deck({ id, label, accent }) {
 
     try {
       chainRef.current = createDeckChain(el);
+      registerDeckChain(id, chainRef.current);
       window.dispatchEvent(new CustomEvent("dj:chain-ready", { detail: { deckId: id, chain: chainRef.current } }));
     } catch (err) { console.error("deck chain error", err); }
 
