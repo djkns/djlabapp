@@ -257,8 +257,25 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         </div>
       </div>
 
-      {/* Record + Save Set + HP icons + MIDI */}
-      <div className="flex flex-col gap-1.5">
+      {/* Crossfader (moved up — directly under decks) */}
+      <div className="pt-2 border-t border-white/5">
+        <div className="flex justify-between items-center mb-1 px-1">
+          <span className="label-tiny" style={{ color: "#FF1F1F" }}>A</span>
+          <span className="label-tiny">CROSSFADER</span>
+          <span className="label-tiny" style={{ color: "#FF1F1F" }}>B</span>
+        </div>
+        <div className="relative">
+          <div className="absolute inset-0 rounded-full pointer-events-none cf-trail"
+            style={{ opacity: 0.9, transform: `translateX(${crossfader * 20}%)`, transition: "transform 80ms ease-out" }} />
+          <input type="range" min={-1} max={1} step={0.01} value={crossfader}
+            onChange={(e) => setCrossfader(+e.target.value)}
+            onDoubleClick={() => setCrossfader(0)}
+            className="fader-horiz w-full" data-testid="crossfader" />
+        </div>
+      </div>
+
+      {/* Record + Save Set + MIDI (moved below crossfader) */}
+      <div className="flex flex-col gap-1.5 pt-2 border-t border-white/5">
         <button data-testid="record-toggle" onClick={recording ? stop : start}
           className={`w-full px-3 py-2 rounded border-2 text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all ${
             recording
@@ -292,23 +309,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         </div>
         <div className="text-[8px] tracking-[0.2em] uppercase text-[#52525B] flex items-center justify-center gap-1">
           <Download className="w-2.5 h-2.5" /> webm
-        </div>
-      </div>
-
-      {/* Crossfader */}
-      <div className="pt-2 border-t border-white/5">
-        <div className="flex justify-between items-center mb-1 px-1">
-          <span className="label-tiny" style={{ color: "#FF1F1F" }}>A</span>
-          <span className="label-tiny">CROSSFADER</span>
-          <span className="label-tiny" style={{ color: "#FF1F1F" }}>B</span>
-        </div>
-        <div className="relative">
-          <div className="absolute inset-0 rounded-full pointer-events-none cf-trail"
-            style={{ opacity: 0.9, transform: `translateX(${crossfader * 20}%)`, transition: "transform 80ms ease-out" }} />
-          <input type="range" min={-1} max={1} step={0.01} value={crossfader}
-            onChange={(e) => setCrossfader(+e.target.value)}
-            onDoubleClick={() => setCrossfader(0)}
-            className="fader-horiz w-full" data-testid="crossfader" />
         </div>
       </div>
 
