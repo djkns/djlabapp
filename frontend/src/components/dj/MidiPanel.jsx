@@ -132,19 +132,67 @@ export default function MidiPanel({ open, onClose }) {
     return () => window.removeEventListener("djlab:midi", h);
   }, [open, midi.mappings]);
 
+  // Learn: sample messages for 500ms after first hit, pick the signature with
+  // the most messages (= the one the user is actively moving). Filters out the
+  // controller's idle / LED / status chatter that would otherwise be captured first.
   useEffect(() => {
     if (!midi.learning) return;
-    const handler = (e) => {
-      const sig = midiSignature(e.detail);
+    const counts = {};
+    const samples = {};
+    let firstTs = null;
+    let finalizeTimer = null;
+
+    const finalize = () => {
+      window.removeEventListener("djlab:midi", handler);
+      if (finalizeTimer) clearTimeout(finalizeTimer);
+      const entries = Object.entries(counts);
+      if (entries.length === 0) {
+        setMidi({ learning: null });
+        return;
+      }
+      entries.sort((a, b) => b[1] - a[1]);
+      const sig = entries[0][0];
+      const detail = samples[sig];
+      const collision = Object.entries(midi.mappings).find(
+        ([id, m]) => m.signature === sig && id !== midi.learning
+      );
+      if (collision) {
+        clearMidiMapping(collision[0]);
+      }
       setMidiMapping(midi.learning, {
         signature: sig,
-        type: e.detail.type, data1: e.detail.data1, channel: e.detail.channel,
+        type: detail.type,
+        data1: detail.data1,
+        channel: detail.channel,
       });
       setMidi({ learning: null });
     };
+
+    const handler = (e) => {
+      const sig = midiSignature(e.detail);
+      counts[sig] = (counts[sig] || 0) + 1;
+      samples[sig] = e.detail;
+      if (firstTs === null) {
+        firstTs = performance.now();
+        finalizeTimer = setTimeout(finalize, 500);
+      }
+    };
+
+    // Bail out after 4s with no input
+    const idleTimer = setTimeout(() => {
+      if (firstTs === null) {
+        window.removeEventListener("djlab:midi", handler);
+        setMidi({ learning: null });
+      }
+    }, 4000);
+
     window.addEventListener("djlab:midi", handler);
-    return () => window.removeEventListener("djlab:midi", handler);
-  }, [midi.learning, setMidiMapping, setMidi]);
+    return () => {
+      clearTimeout(idleTimer);
+      if (finalizeTimer) clearTimeout(finalizeTimer);
+      window.removeEventListener("djlab:midi", handler);
+    };
+  }, [midi.learning, midi.mappings, setMidiMapping, clearMidiMapping, setMidi]);
 
   const connect = (deviceId) => {
     if (!deviceId) return;
@@ -182,9 +230,23 @@ export default function MidiPanel({ open, onClose }) {
             </div>
             <h2 className="font-display font-black text-2xl tracking-tight">Controller mappings</h2>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono-dj">
-            <span className="text-2xl font-black text-white">{mappedCount}</span>
-            <span className="text-xs text-[#52525B]">/ {totalCount} mapped</span>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-baseline gap-1.5 font-mono-dj">
+              <span className="text-2xl font-black text-white">{mappedCount}</span>
+              <span className="text-xs text-[#52525B]">/ {totalCount} mapped</span>
+            </div>
+            <button
+              onClick={() => setMidi({ enabled: !midi.enabled })}
+              data-testid="midi-panic"
+              title={midi.enabled ? "Pause MIDI dispatch (mappings preserved)" : "Resume MIDI dispatch"}
+              className={`px-3 py-1 rounded text-[10px] uppercase tracking-[0.2em] font-bold border-2 transition ${
+                midi.enabled
+                  ? "border-[#FF1F1F] text-[#FF1F1F] hover:bg-[#FF1F1F] hover:text-white"
+                  : "border-[#A1A1AA] text-[#A1A1AA] bg-[#52525B]/20 hover:border-white hover:text-white"
+              }`}
+            >
+              {midi.enabled ? "Panic · Disable" : "Resume MIDI"}
+            </button>
           </div>
         </div>
 

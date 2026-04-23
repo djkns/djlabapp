@@ -25,6 +25,7 @@ export default function MidiDispatcher() {
 
   // Track last value per signature for edge detection on buttons
   const lastValueRef = useRef({});
+  const lastFireRef = useRef({});
   const learningRef = useRef(null);
 
   // Keep learningRef in sync with store (without re-binding listener)
@@ -47,12 +48,18 @@ export default function MidiDispatcher() {
       if (!ctrl) return;
 
       const { data2 } = e.detail;
-      const lastVal = lastValueRef.current[sig] ?? 0;
+      const lastVal = lastValueRef.current[sig] ?? -1;
+      // Drop noise: if the value hasn't changed and last fire was <30ms ago, skip
+      const lastFireTs = lastFireRef.current[sig] ?? 0;
+      const now = performance.now();
+      if (data2 === lastVal && now - lastFireTs < 30) return;
       lastValueRef.current[sig] = data2;
+      lastFireRef.current[sig] = now;
 
       if (isButtonControl(ctrl)) {
-        // Rising edge: any transition from 0 -> >0 is a press.
-        const wasZero = lastVal === 0;
+        // Rising edge: any transition from 0/idle -> >0 is a press.
+        // Treat first-ever message (lastVal === -1) AS rising-edge if non-zero.
+        const wasZero = lastVal <= 0;
         const nowNonZero = data2 > 0;
         if (nowNonZero && wasZero) {
           window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl } }));
