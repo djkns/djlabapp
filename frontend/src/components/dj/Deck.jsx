@@ -213,7 +213,13 @@ export default function Deck({ id, label, accent }) {
       }
       el.src = playUrl;
       el.load();
-      if (wsRef.current) { await wsRef.current.load(playUrl).catch(() => {}); }
+      // Track wavesurfer's load promise so the BPM analyzer can wait on it
+      // and reuse its decoded AudioBuffer instead of fetching the URL again
+      // (3 concurrent fetches of the same MP3 caused waveform + BPM to both
+      // drop out — single source of truth fixes that).
+      const wsLoaded = wsRef.current
+        ? wsRef.current.load(playUrl).catch((err) => { console.warn("[ws] load failed", err); })
+        : Promise.resolve();
       setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
 
       // Auto-detect BPM with MongoDB cache. Flow:
@@ -252,13 +258,24 @@ export default function Deck({ id, label, accent }) {
             }
           } catch { /* network noise — fall through to analysis */ }
 
-          // 2. Cache miss → analyze BPM
+          // 2. Cache miss → analyze BPM. Wait for wavesurfer to finish
+          // loading so we can reuse its decoded AudioBuffer (one fetch, one
+          // decode for both the waveform and the analyzer).
           setAnalyzingBPM(true);
-          const resp = await fetch(playUrl);
-          if (!resp.ok) throw new Error(`fetch ${resp.status}`);
-          const arr = await resp.arrayBuffer();
-          const ac = getAudioContext().ctx;
-          const buf = await ac.decodeAudioData(arr.slice(0));
+          await wsLoaded;
+          let buf = null;
+          try {
+            buf = wsRef.current?.getDecodedData?.();
+          } catch { /* fallthrough to manual decode */ }
+          if (!buf) {
+            // Fallback: wavesurfer didn't expose its buffer (older version
+            // or peaks-only mode). Fetch + decode ourselves.
+            const resp = await fetch(playUrl);
+            if (!resp.ok) throw new Error(`fetch ${resp.status}`);
+            const arr = await resp.arrayBuffer();
+            const ac = getAudioContext().ctx;
+            buf = await ac.decodeAudioData(arr.slice(0));
+          }
           const bpm = await analyzeBPM(buf);
           const cur = useDJStore.getState()[id].track;
           if (cur?.key !== trackKey) return;
