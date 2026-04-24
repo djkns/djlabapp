@@ -210,13 +210,31 @@ export default function Deck({ id, label, accent }) {
       if (wsRef.current) { await wsRef.current.load(playUrl).catch(() => {}); }
       setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
 
-      // Auto-detect BPM in the background — never blocks playback. Decodes
-      // the loaded URL into an AudioBuffer and runs `web-audio-beat-detector`'s
-      // tempo analysis. Updates `baseBPM` in the store on completion.
+      // Auto-detect BPM with MongoDB cache. Flow:
+      //   1. GET /api/tracks/meta?key=… → cached BPM, instant.
+      //   2. Cache miss → fetch + decodeAudioData + analyzeBPM → POST result back.
+      // Always non-blocking (fire-and-forget); never delays playback.
       (async () => {
         try {
-          setAnalyzingBPM(true);
           const trackKey = track.key;
+          const apiBase = process.env.REACT_APP_BACKEND_URL;
+          // 1. Cache lookup
+          try {
+            const cacheRes = await fetch(`${apiBase}/api/tracks/meta?key=${encodeURIComponent(trackKey)}`);
+            if (cacheRes.ok) {
+              const cached = await cacheRes.json();
+              if (cached?.bpm && isFinite(cached.bpm) && cached.bpm >= 60 && cached.bpm <= 200) {
+                const cur = useDJStore.getState()[id].track;
+                if (cur?.key === trackKey) {
+                  setDeck(id, { baseBPM: Math.round(cached.bpm * 10) / 10 });
+                }
+                return; // skip analysis — cache hit
+              }
+            }
+          } catch { /* network noise — fall through to analysis */ }
+
+          // 2. Cache miss → analyze
+          setAnalyzingBPM(true);
           const resp = await fetch(playUrl);
           if (!resp.ok) throw new Error(`fetch ${resp.status}`);
           const arr = await resp.arrayBuffer();
@@ -228,9 +246,14 @@ export default function Deck({ id, label, accent }) {
           if (cur?.key !== trackKey) return;
           if (bpm && isFinite(bpm) && bpm >= 60 && bpm <= 200) {
             setDeck(id, { baseBPM: Math.round(bpm * 10) / 10 });
+            // Cache for next time (fire-and-forget)
+            fetch(`${apiBase}/api/tracks/meta`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ key: trackKey, bpm }),
+            }).catch(() => {});
           }
         } catch (err) {
-          // Silent — keep the metadata/manual BPM
           console.warn("[bpm] detection failed", err);
         } finally {
           setAnalyzingBPM(false);

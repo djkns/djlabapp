@@ -197,6 +197,21 @@ class SavedMixCreate(BaseModel):
     tracks_used: Optional[List[dict]] = []
 
 
+class TrackMeta(BaseModel):
+    """Cached per-track analysis (currently just BPM, future-proofed for key, cues, etc.)."""
+    model_config = ConfigDict(extra="ignore")
+    key: str
+    bpm: Optional[float] = None
+    musical_key: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class TrackMetaUpsert(BaseModel):
+    key: str
+    bpm: Optional[float] = None
+    musical_key: Optional[str] = None
+
+
 @api_router.get("/")
 async def root():
     return {
@@ -208,7 +223,9 @@ async def root():
 
 @api_router.get("/tracks", response_model=List[Track])
 async def list_tracks(source: Optional[str] = Query(None, description="'s3' | 'demo' | None (all)")):
-    """List available tracks. Merges S3 library (if configured) + demo tracks."""
+    """List available tracks. Merges S3 library (if configured) + demo tracks.
+    BPM is inlined from the `track_meta` cache when available so the library shows
+    BPM without re-analyzing on every page load."""
     result: List[dict] = []
     if source in (None, "s3"):
         try:
@@ -218,7 +235,49 @@ async def list_tracks(source: Optional[str] = Query(None, description="'s3' | 'd
             logger.warning(f"S3 listing failed: {e}")
     if source in (None, "demo"):
         result.extend(DEMO_TRACKS)
+
+    # Inline cached BPMs (one round-trip)
+    keys = [t["key"] for t in result if not t.get("bpm")]
+    if keys:
+        cached = await db.track_meta.find(
+            {"key": {"$in": keys}},
+            {"_id": 0, "key": 1, "bpm": 1},
+        ).to_list(len(keys))
+        bpm_by_key = {c["key"]: c.get("bpm") for c in cached}
+        for t in result:
+            if not t.get("bpm") and bpm_by_key.get(t["key"]) is not None:
+                t["bpm"] = bpm_by_key[t["key"]]
     return result
+
+
+@api_router.get("/tracks/meta", response_model=TrackMeta)
+async def get_track_meta(key: str = Query(...)):
+    """Return cached metadata (BPM, etc.) for a single track key."""
+    doc = await db.track_meta.find_one({"key": key}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="No cached metadata")
+    if isinstance(doc.get("updated_at"), str):
+        doc["updated_at"] = datetime.fromisoformat(doc["updated_at"])
+    return doc
+
+
+@api_router.post("/tracks/meta", response_model=TrackMeta)
+async def upsert_track_meta(payload: TrackMetaUpsert):
+    """Cache analysis result (BPM, key, etc.) for a track. Idempotent upsert by key."""
+    update: dict = {"key": payload.key, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.bpm is not None:
+        update["bpm"] = round(payload.bpm, 2)
+    if payload.musical_key is not None:
+        update["musical_key"] = payload.musical_key
+    await db.track_meta.update_one(
+        {"key": payload.key},
+        {"$set": update},
+        upsert=True,
+    )
+    doc = await db.track_meta.find_one({"key": payload.key}, {"_id": 0})
+    if isinstance(doc.get("updated_at"), str):
+        doc["updated_at"] = datetime.fromisoformat(doc["updated_at"])
+    return doc
 
 
 @api_router.get("/tracks/url")
