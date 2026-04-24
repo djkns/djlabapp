@@ -112,7 +112,7 @@ export default function StreamConfigDialog({ open, onClose }) {
           </Field>
           <Field label="Source username">
             <input value={cfg.user} onChange={(e) => save({ user: e.target.value })}
-              data-testid="stream-user" placeholder="source"
+              data-testid="stream-user" placeholder="djkns (your DJ streamer username)"
               autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
               name="dj-stream-user"
               data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
@@ -187,7 +187,7 @@ export default function StreamConfigDialog({ open, onClose }) {
 
         <div className="mt-3 flex items-start gap-2 text-[10px] text-[#52525B] italic">
           <Info className="w-3 h-3 shrink-0 mt-0.5" />
-          Credentials are stored locally in your browser only. Server streams MP3 via ffmpeg → Icecast PUT.
+          AzuraCast / Shoutcast: enter your DJ username + password separately — we pack them as <code className="text-[#A1A1AA]">user:password</code> automatically. Credentials are stored in your browser only.
         </div>
       </div>
     </div>

@@ -360,7 +360,18 @@ async def stream_ws(ws: WebSocket):
         await ws.close(code=1008, reason="Missing host or password")
         return
 
-    url = _build_icecast_url(user, password, host, int(port), mount)
+    # AzuraCast / Liquidsoap harbor quirk: Shoutcast/ICY protocol has no
+    # separate username field, so per-DJ streamer accounts expect the
+    # password to be packed as "dj_username:dj_password". FFmpeg's legacy
+    # icecast mode only uses the password from the URL, ignoring the user
+    # part, so we merge them server-side.
+    effective_password = password
+    effective_user = user
+    if protocol == "shoutcast" and user and user != "source" and ":" not in password:
+        effective_password = f"{user}:{password}"
+        effective_user = "source"  # placeholder; ffmpeg's legacy mode ignores it
+
+    url = _build_icecast_url(effective_user, effective_password, host, int(port), mount)
     stream_id = str(uuid.uuid4())
 
     # ffmpeg reads WebM/Opus from stdin, re-encodes to MP3, pushes to Icecast.
