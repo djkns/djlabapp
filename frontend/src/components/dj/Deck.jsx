@@ -63,7 +63,7 @@ export default function Deck({ id, label, accent }) {
     try {
       chainRef.current = createDeckChain(el);
       registerDeckChain(id, chainRef.current);
-      window.dispatchEvent(new CustomEvent("dj:chain-ready", { detail: { deckId: id, chain: chainRef.current } }));
+      window.dispatchEvent(new CustomEvent("dj:chain-ready", { detail: { deckId: id, chain: chainRef.current, audioEl: el } }));
     } catch (err) { console.error("deck chain error", err); }
 
     el.addEventListener("ended", () => setDeck(id, { playing: false }));
@@ -206,6 +206,8 @@ export default function Deck({ id, label, accent }) {
       el.src = playUrl;
       el.load();
       if (wsRef.current) { await wsRef.current.load(playUrl).catch(() => {}); }
+      // Let the top-of-screen stacked beat-grid preview re-load its peaks
+      window.dispatchEvent(new CustomEvent("dj:track-loaded", { detail: { deckId: id, url: playUrl } }));
       setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
     } catch (err) {
       console.error("load error", err);
