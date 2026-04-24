@@ -9,7 +9,10 @@ import SavedSetsDrawer from "@/components/dj/SavedSetsDrawer";
 import MidiPanel from "@/components/dj/MidiPanel";
 import MidiDispatcher from "@/components/dj/MidiDispatcher";
 import PlatterLEDFeedback from "@/components/dj/PlatterLEDFeedback";
+import StreamConfigDialog from "@/components/dj/StreamConfigDialog";
+import ExportMixDialog from "@/components/dj/ExportMixDialog";
 import { resumeAudioContext } from "@/lib/audioEngine";
+import { subscribeStreamStatus } from "@/lib/streamService";
 import { requestMidi, listMidiInputs, setActiveInput, addStateChangeListener, getActiveInputId } from "@/lib/midi";
 import { useDJStore } from "@/store/djStore";
 
@@ -22,6 +25,10 @@ export default function DJLab() {
   const [saveSetDuration, setSaveSetDuration] = useState(0);
   const [savedSetsOpen, setSavedSetsOpen] = useState(false);
   const [midiOpen, setMidiOpen] = useState(false);
+  const [streamOpen, setStreamOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [lastRecording, setLastRecording] = useState(null); // { blob, duration }
 
   const deckA = useDJStore((s) => s.deckA);
   const deckB = useDJStore((s) => s.deckB);
@@ -33,6 +40,23 @@ export default function DJLab() {
     window.addEventListener("dj:record-elapsed", h);
     return () => window.removeEventListener("dj:record-elapsed", h);
   }, []);
+
+  // Capture the finished recording so Export can open it
+  useEffect(() => {
+    const h = (e) => {
+      const { blob, duration } = e.detail || {};
+      if (blob) setLastRecording({ blob, duration });
+    };
+    window.addEventListener("dj:recording-complete", h);
+    const openExportH = () => setExportOpen(true);
+    window.addEventListener("dj:open-export", openExportH);
+    return () => {
+      window.removeEventListener("dj:recording-complete", h);
+      window.removeEventListener("dj:open-export", openExportH);
+    };
+  }, []);
+
+  useEffect(() => subscribeStreamStatus((s) => setStreaming(!!s.connected)), []);
 
   useEffect(() => {
     fetch(`${process.env.REACT_APP_BACKEND_URL}/api/`)
@@ -83,6 +107,10 @@ export default function DJLab() {
           recording={recording}
           elapsed={recordElapsed}
           onToggleRecord={() => window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: "master.record" } }))}
+          onOpenStream={() => setStreamOpen(true)}
+          streaming={streaming}
+          onOpenExport={() => setExportOpen(true)}
+          canExport={!!lastRecording?.blob}
         />
 
         <main className="flex-1 grid grid-cols-12 gap-3 p-3 overflow-hidden relative z-10 min-h-0"
@@ -117,6 +145,13 @@ export default function DJLab() {
         />
         <SavedSetsDrawer open={savedSetsOpen} onClose={() => setSavedSetsOpen(false)} />
         <MidiPanel open={midiOpen} onClose={() => setMidiOpen(false)} />
+        <StreamConfigDialog open={streamOpen} onClose={() => setStreamOpen(false)} />
+        <ExportMixDialog
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
+          webmBlob={lastRecording?.blob}
+          durationSec={lastRecording?.duration}
+        />
       </div>
     </>
   );

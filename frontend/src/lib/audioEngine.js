@@ -302,3 +302,90 @@ export function stopMasterRecording() {
   if (currentRecorder && currentRecorder.state !== "inactive") currentRecorder.stop();
 }
 export function isRecording() { return currentRecorder && currentRecorder.state === "recording"; }
+
+/** Returns the master bus MediaStream — useful for live streaming (Icecast). */
+export function getMasterStream() {
+  const { masterStreamDest } = getAudioContext();
+  return masterStreamDest.stream;
+}
+
+// -------- Mix-export helpers (WebM -> WAV / MP3) --------
+
+/** Decode a WebM/Opus blob into an AudioBuffer using an OfflineAudioContext. */
+async function decodeBlobToAudioBuffer(blob) {
+  const ab = await blob.arrayBuffer();
+  const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = await tempCtx.decodeAudioData(ab.slice(0));
+  tempCtx.close();
+  return buf;
+}
+
+/** Encode an AudioBuffer as a 16-bit PCM WAV Blob. */
+export async function blobToWavBlob(blob) {
+  const audio = await decodeBlobToAudioBuffer(blob);
+  const numChan = audio.numberOfChannels;
+  const len = audio.length;
+  const sampleRate = audio.sampleRate;
+  const bytesPerSample = 2;
+  const blockAlign = numChan * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = len * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, "RIFF"); view.setUint32(4, 36 + dataSize, true); writeStr(8, "WAVE");
+  writeStr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, numChan, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true); view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bytesPerSample * 8, true); writeStr(36, "data"); view.setUint32(40, dataSize, true);
+
+  // Interleave channels
+  const channels = [];
+  for (let c = 0; c < numChan; c++) channels.push(audio.getChannelData(c));
+  let off = 44;
+  for (let i = 0; i < len; i++) {
+    for (let c = 0; c < numChan; c++) {
+      const s = Math.max(-1, Math.min(1, channels[c][i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      off += 2;
+    }
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+/** Encode an AudioBuffer as MP3 Blob at the given bitrate (default 320 kbps). */
+export async function blobToMp3Blob(blob, bitrateKbps = 320, onProgress) {
+  const { Mp3Encoder } = await import("@breezystack/lamejs");
+  const audio = await decodeBlobToAudioBuffer(blob);
+  const numChan = Math.min(2, audio.numberOfChannels);
+  const sampleRate = audio.sampleRate;
+  const encoder = new Mp3Encoder(numChan, sampleRate, bitrateKbps);
+
+  const toInt16 = (f32) => {
+    const out = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return out;
+  };
+
+  const leftF = audio.getChannelData(0);
+  const rightF = numChan === 2 ? audio.getChannelData(1) : leftF;
+  const left = toInt16(leftF);
+  const right = toInt16(rightF);
+
+  const blockSize = 1152;
+  const mp3Data = [];
+  for (let i = 0; i < left.length; i += blockSize) {
+    const l = left.subarray(i, i + blockSize);
+    const r = right.subarray(i, i + blockSize);
+    const buf = numChan === 2 ? encoder.encodeBuffer(l, r) : encoder.encodeBuffer(l);
+    if (buf.length > 0) mp3Data.push(buf);
+    if (onProgress && i % (blockSize * 50) === 0) onProgress(i / left.length);
+  }
+  const flush = encoder.flush();
+  if (flush.length > 0) mp3Data.push(flush);
+  return new Blob(mp3Data, { type: "audio/mpeg" });
+}

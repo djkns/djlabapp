@@ -1,9 +1,11 @@
-import { Radio, Gamepad2, Save, FolderOpen, Square } from "lucide-react";
+import { Radio, Gamepad2, Save, FolderOpen, Square, FileAudio } from "lucide-react";
 import { useDJStore } from "@/store/djStore";
 
 export default function Header({
   s3Configured, onOpenMidi, onOpenSaveSet, onOpenSavedSets,
   recording, elapsed, onToggleRecord,
+  onOpenStream, streaming,
+  onOpenExport, canExport,
 }) {
   const midi = useDJStore((s) => s.midi);
   const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -20,7 +22,7 @@ export default function Header({
           </span>
         </div>
 
-        {/* REC | Save Set | My Sets */}
+        {/* REC | EXPORT | GO LIVE | Save Set | My Sets */}
         <div className="hidden md:flex items-center gap-1.5 ml-6 pl-6 border-l border-white/10">
           <button
             data-testid="record-toggle"
@@ -37,6 +39,36 @@ export default function Header({
               : <span className="w-2.5 h-2.5 rounded-full bg-[#FF1F1F]" />}
             <span data-testid="record-elapsed">{recording ? fmt(elapsed) : "REC"}</span>
           </button>
+
+          <button
+            data-testid="header-export"
+            onClick={onOpenExport}
+            disabled={!canExport}
+            className={`flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded border transition ${
+              canExport
+                ? "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/30"
+                : "border-white/10 text-[#3f3f46] cursor-not-allowed"
+            }`}
+            title={canExport ? "Export last recording as MP3 / WAV" : "Record a mix first to enable export"}
+          >
+            <FileAudio className="w-3.5 h-3.5" />
+            Export
+          </button>
+
+          <button
+            data-testid="header-go-live"
+            onClick={onOpenStream}
+            className={`flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded border transition ${
+              streaming
+                ? "border-[#FF1F1F] text-white bg-[#D10A0A] shadow-[0_0_12px_#FF1F1F] beat-pulse"
+                : "border-[#00D4FF]/50 text-[#00D4FF] bg-[#00D4FF]/5 hover:bg-[#00D4FF]/15"
+            }`}
+            title={streaming ? "Streaming live — click to manage" : "Go live on Icecast / AzuraCast"}
+          >
+            <Radio className="w-3.5 h-3.5" />
+            {streaming ? "On Air" : "Go Live"}
+          </button>
+
           <button
             data-testid="header-save-set"
             onClick={() => onOpenSaveSet?.()}
@@ -77,9 +109,9 @@ export default function Header({
           <span className={`w-2 h-2 rounded-full ${s3Configured ? "bg-[#FF1F1F] nu-glow-accent" : "bg-[#52525B]"}`} />
           {s3Configured ? "S3 library · live" : "Demo library"}
         </div>
-        <div className="hidden md:flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase text-[#A1A1AA]">
-          <Radio className="w-3.5 h-3.5 text-[#FF1F1F]" />
-          On Air
+        <div className={`hidden md:flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase ${streaming ? "text-[#FF1F1F]" : "text-[#A1A1AA]"}`}>
+          <Radio className={`w-3.5 h-3.5 ${streaming ? "text-[#FF1F1F] beat-pulse" : "text-[#FF1F1F]"}`} />
+          {streaming ? "Live" : "On Air"}
         </div>
       </div>
     </header>

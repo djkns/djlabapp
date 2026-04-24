@@ -245,16 +245,12 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     await resumeAudioContext();
     elapsedRef.current = 0; setElapsed(0);
     startMasterRecording((blob, mime, durationSec) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `djlab-mix-${new Date().toISOString().replace(/[:.]/g, "-")}.${mime.includes("webm") ? "webm" : "ogg"}`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
       lastRecordingRef.current = { blob, duration: durationSec };
-      toast.success("Mix downloaded", {
-        description: `${(blob.size / 1024 / 1024).toFixed(2)} MB`,
-        action: { label: "Save Set", onClick: () => onOpenSaveSet?.(durationSec) },
+      // Notify DJLab so the Export dialog can access the recording
+      window.dispatchEvent(new CustomEvent("dj:recording-complete", { detail: { blob, duration: durationSec, mime } }));
+      toast.success("Mix ready", {
+        description: `${(blob.size / 1024 / 1024).toFixed(2)} MB · open Export to save as MP3 / WAV`,
+        action: { label: "Export", onClick: () => window.dispatchEvent(new CustomEvent("dj:open-export")) },
       });
     });
     setRecording(true);

@@ -1,10 +1,12 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
+import subprocess
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
@@ -311,6 +313,143 @@ async def list_mixes():
 
 
 app.include_router(api_router)
+
+
+# -------------------- LIVE STREAM RELAY (Icecast / AzuraCast) --------------------
+#
+# Pipeline:
+#   Browser <MediaRecorder WebM/Opus> --WebSocket bytes--> FastAPI --stdin--> ffmpeg
+#   ffmpeg transcodes to MP3 and does HTTP PUT (Icecast2 source) to the target server.
+#
+# Query params (all required):
+#   host, port, mount, user, password, bitrate (kbps int), station_name, genre, description
+#
+_active_streams: dict[str, subprocess.Popen] = {}
+
+
+def _build_icecast_url(user: str, password: str, host: str, port: int, mount: str) -> str:
+    # Ensure mount starts with '/'
+    m = mount if mount.startswith('/') else '/' + mount
+    return f"icecast://{user}:{password}@{host}:{port}{m}"
+
+
+@app.websocket("/api/ws/stream")
+async def stream_ws(ws: WebSocket):
+    """Relay browser WebM/Opus chunks to an Icecast/AzuraCast server via ffmpeg."""
+    await ws.accept()
+
+    q = ws.query_params
+    host = q.get("host")
+    port = q.get("port", "8000")
+    mount = q.get("mount", "/live.mp3")
+    user = q.get("user", "source")
+    password = q.get("password")
+    bitrate = q.get("bitrate", "128")
+    station_name = q.get("station_name", "DJ Lab · NU Vibe")
+    genre = q.get("genre", "Electronic")
+    description = q.get("description", "Live mix via DJ Lab")
+
+    if not host or not password:
+        await ws.close(code=1008, reason="Missing host or password")
+        return
+
+    url = _build_icecast_url(user, password, host, int(port), mount)
+    stream_id = str(uuid.uuid4())
+
+    # ffmpeg reads WebM/Opus from stdin, re-encodes to MP3, pushes to Icecast.
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-re",
+        "-i", "pipe:0",
+        "-c:a", "libmp3lame",
+        "-b:a", f"{bitrate}k",
+        "-f", "mp3",
+        "-content_type", "audio/mpeg",
+        "-ice_name", station_name,
+        "-ice_genre", genre,
+        "-ice_description", description,
+        "-legacy_icecast", "1",
+        url,
+    ]
+
+    try:
+        proc = await asyncio.to_thread(
+            lambda: subprocess.Popen(
+                ffmpeg_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        )
+    except FileNotFoundError:
+        await ws.send_json({"type": "error", "message": "ffmpeg not installed on server"})
+        await ws.close(code=1011)
+        return
+
+    _active_streams[stream_id] = proc
+    await ws.send_json({"type": "connected", "stream_id": stream_id})
+
+    async def pump_stderr():
+        """Forward ffmpeg errors back to the client so they can debug."""
+        while proc.poll() is None:
+            try:
+                line = await asyncio.to_thread(proc.stderr.readline)
+            except Exception:
+                break
+            if not line:
+                break
+            try:
+                await ws.send_json({"type": "ffmpeg", "message": line.decode("utf-8", "replace").strip()})
+            except Exception:
+                break
+
+    stderr_task = asyncio.create_task(pump_stderr())
+
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+            data = msg.get("bytes")
+            if data and proc.stdin:
+                try:
+                    await asyncio.to_thread(proc.stdin.write, data)
+                except BrokenPipeError:
+                    await ws.send_json({"type": "error", "message": "ffmpeg closed the pipe — check server creds"})
+                    break
+            elif msg.get("text"):
+                try:
+                    if msg["text"] == "stop":
+                        break
+                except Exception:
+                    pass
+    except WebSocketDisconnect:
+        pass
+    finally:
+        stderr_task.cancel()
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+            await asyncio.wait_for(asyncio.to_thread(proc.wait), timeout=5)
+        except Exception:
+            proc.kill()
+        _active_streams.pop(stream_id, None)
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
+@api_router.get("/stream/status")
+async def stream_status():
+    return {"active": len(_active_streams), "stream_ids": list(_active_streams.keys())}
+
 
 app.add_middleware(
     CORSMiddleware,
