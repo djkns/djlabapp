@@ -9,6 +9,13 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
   const [dragging, setDragging] = useState(false);
   const [localValue, setLocalValue] = useState(value);
   const startRef = useRef({ y: 0, v: 0 });
+  // Keep an always-fresh ref to onChange so the mousemove listener can be
+  // attached ONCE per drag session. If we put `onChange` in the effect deps,
+  // the parent's inline lambda identity changes on every render → effect
+  // tears down + re-attaches → mousemove events fired between tear-down and
+  // re-attach get dropped → knob "bounces".
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   // Sync external (MIDI / store) value changes — but NOT while the user is
   // actively dragging, otherwise we'd overwrite the user's own drag updates
@@ -29,7 +36,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       const dy = startRef.current.y - y; // drag up = increase
       const next = Math.max(min, Math.min(max, startRef.current.v + dy * (range / 140)));
       setLocalValue(next);
-      onChange?.(next);
+      onChangeRef.current?.(next);
     };
     const onUp = () => setDragging(false);
     window.addEventListener("mousemove", onMove);
@@ -42,7 +49,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
     };
-  }, [dragging, min, max, onChange, range]);
+  }, [dragging, min, max, range]);
 
   const startDrag = (e) => {
     const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
