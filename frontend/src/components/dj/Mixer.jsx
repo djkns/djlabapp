@@ -10,7 +10,6 @@ import {
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
-import useRafThrottledRangeChange from "@/lib/useRafThrottledRangeChange";
 
 // Thin vertical stereo VU bar driven by a deck's analyser
 function ChannelVU({ analyser, tall = false }) {
@@ -117,7 +116,6 @@ function TempoFader({ deckId, letter }) {
   const tempoPct = useDJStore((s) => s[deckId].tempoPct);
   const tempoRange = useDJStore((s) => s[deckId].tempoRange);
   const setDeck = useDJStore((s) => s.setDeck);
-  const rangeHandlers = useRafThrottledRangeChange((v) => setDeck(deckId, { tempoPct: v }));
   return (
     <div className="flex flex-col items-center gap-1 pt-2">
       <span className="label-tiny">TEMPO</span>
@@ -127,11 +125,8 @@ function TempoFader({ deckId, letter }) {
       <input
         type="range"
         min={-tempoRange} max={tempoRange} step={0.1}
-        defaultValue={tempoPct}
-        key={tempoRange}
-        onChange={rangeHandlers.onChange}
-        onMouseUp={rangeHandlers.onPointerUp}
-        onTouchEnd={rangeHandlers.onPointerUp}
+        value={tempoPct}
+        onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
         onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
         className="fader-vert"
         style={{ height: 160 }}
@@ -143,23 +138,22 @@ function TempoFader({ deckId, letter }) {
   );
 }
 
-// Compact volume fader + VU for the crossfader row. Owns the audio-engine
-// volume wiring so ChannelStrip doesn't re-render on volume drags.
 function VolumeFader({ deckId, chain }) {
   const volume = useDJStore((s) => s[deckId].volume);
   const setDeck = useDJStore((s) => s.setDeck);
   const letter = deckId === "deckA" ? "a" : "b";
   const liveChain = chain || getDeckChain(deckId);
   useEffect(() => { liveChain?.setVolume?.(volume); }, [liveChain, volume]);
-  const rangeHandlers = useRafThrottledRangeChange((v) => setDeck(deckId, { volume: v }));
+  // Controlled input so MIDI / Sync / external changes update the thumb.
+  // Performance is already isolated because only this tiny component
+  // re-renders on volume changes (siblings use sliced selectors).
+  const onChange = (e) => setDeck(deckId, { volume: +e.target.value });
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="label-tiny">VOL {letter.toUpperCase()}</span>
       <div className="flex items-end gap-1">
-        <input type="range" min={0} max={1} step={0.01} defaultValue={volume}
-          onChange={rangeHandlers.onChange}
-          onMouseUp={rangeHandlers.onPointerUp}
-          onTouchEnd={rangeHandlers.onPointerUp}
+        <input type="range" min={0} max={1} step={0.01} value={volume}
+          onChange={onChange}
           className="fader-vert" style={{ height: 110 }}
           data-testid={`channel-${letter}-volume`} />
         <ChannelVU analyser={chain?.analyser} />
@@ -315,7 +309,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       else if (action === "master.volume") setMasterVolume(Math.max(0, Math.min(1.2, value * 1.2)));
       else if (action === "hp.volume") setHp({ volume: value });
       else if (action === "hp.mix") setHp({ mix: value });
-      else if (action === "crossfader") setCrossfader(Math.max(-1, Math.min(1, value)));
+      else if (action === "crossfader") useDJStore.getState().setCrossfader(Math.max(-1, Math.min(1, value)));
       else if (action === "mic.enabled") { await resumeAudioContext(); setMic({ enabled: !mic.enabled }); }
       else if (action === "mic.volume") setMic({ volume: Math.max(0, Math.min(1.2, value * 1.2)) });
     };
@@ -427,7 +421,6 @@ function CrossfaderRail() {
     getDeckChain("deckA")?.setCrossfade?.(a);
     getDeckChain("deckB")?.setCrossfade?.(b);
   }, [crossfader]);
-  const rangeHandlers = useRafThrottledRangeChange(setCrossfader);
   return (
     <div className="pt-1 pb-0.5 border-t border-[#D10A0A]/40 bg-gradient-to-b from-transparent to-[#0f0f0f]">
       <div className="flex justify-between items-center px-1">
@@ -438,10 +431,8 @@ function CrossfaderRail() {
       <div className="relative">
         <div className="absolute inset-0 rounded-full pointer-events-none cf-trail"
           style={{ opacity: 0.9, transform: `translateX(${crossfader * 20}%)`, transition: "transform 80ms ease-out" }} />
-        <input type="range" min={-1} max={1} step={0.01} defaultValue={crossfader}
-          onChange={rangeHandlers.onChange}
-          onMouseUp={rangeHandlers.onPointerUp}
-          onTouchEnd={rangeHandlers.onPointerUp}
+        <input type="range" min={-1} max={1} step={0.01} value={crossfader}
+          onChange={(e) => setCrossfader(+e.target.value)}
           onDoubleClick={() => setCrossfader(0)}
           className="fader-horiz w-full" data-testid="crossfader" />
       </div>
