@@ -375,14 +375,17 @@ async def stream_ws(ws: WebSocket):
     stream_id = str(uuid.uuid4())
 
     # ffmpeg reads WebM/Opus from stdin, re-encodes to MP3, pushes to Icecast.
-    # NOTE: no `-re` flag — browser MediaRecorder already delivers at real-time,
-    # and `-re` causes ffmpeg to throttle its own pipe reads which can starve
-    # the encoder.
+    # NOTE: do NOT force `-f webm` — strict parser rejects the unknown-length
+    # EBML elements that browser MediaRecorder emits in live streams.
+    # Auto-detect + generous probe buffer + nobuffer lets ffmpeg parse the
+    # rolling cluster format.
     ffmpeg_cmd = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel", "info",
-        "-f", "webm",
+        "-fflags", "+nobuffer+genpts",
+        "-probesize", "32K",
+        "-analyzeduration", "0",
         "-i", "pipe:0",
         "-c:a", "libmp3lame",
         "-b:a", f"{bitrate}k",
