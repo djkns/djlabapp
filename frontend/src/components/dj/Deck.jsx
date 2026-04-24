@@ -54,6 +54,12 @@ export default function Deck({ id, label, accent }) {
 
   const [beatFlash, setBeatFlash] = useState(false);
   const [analyzingBPM, setAnalyzingBPM] = useState(false);
+  // Tracks the cuesJson last known to be in the DB for the current track.
+  // Lifted up here so `loadTrack` can mark cache-restored cues as
+  // already-persisted (preventing a needless POST that would overwrite the
+  // same value, and protecting against the load-time all-null reset stomping
+  // on the cached cues).
+  const cuesAlreadyPersistedRef = useRef({ key: null, json: null });
 
   // Audio element + chain
   useEffect(() => {
@@ -211,29 +217,42 @@ export default function Deck({ id, label, accent }) {
       setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
 
       // Auto-detect BPM with MongoDB cache. Flow:
-      //   1. GET /api/tracks/meta?key=… → cached BPM, instant.
+      //   1. GET /api/tracks/meta?key=… → cached BPM + hot_cues, instant.
       //   2. Cache miss → fetch + decodeAudioData + analyzeBPM → POST result back.
       // Always non-blocking (fire-and-forget); never delays playback.
       (async () => {
         try {
           const trackKey = track.key;
           const apiBase = process.env.REACT_APP_BACKEND_URL;
-          // 1. Cache lookup
+          // 1. Cache lookup — pulls BPM AND hot_cues
           try {
             const cacheRes = await fetch(`${apiBase}/api/tracks/meta?key=${encodeURIComponent(trackKey)}`);
             if (cacheRes.ok) {
               const cached = await cacheRes.json();
-              if (cached?.bpm && isFinite(cached.bpm) && cached.bpm >= 60 && cached.bpm <= 200) {
-                const cur = useDJStore.getState()[id].track;
-                if (cur?.key === trackKey) {
-                  setDeck(id, { baseBPM: Math.round(cached.bpm * 10) / 10 });
+              const cur = useDJStore.getState()[id].track;
+              if (cur?.key === trackKey) {
+                const patch = {};
+                if (cached?.bpm && isFinite(cached.bpm) && cached.bpm >= 60 && cached.bpm <= 200) {
+                  patch.baseBPM = Math.round(cached.bpm * 10) / 10;
                 }
-                return; // skip analysis — cache hit
+                // Only restore cached cues if the user hasn't manually set any
+                // since the track loaded (race: cache fetch is slower than a
+                // human click). All-null = pristine.
+                const liveCues = useDJStore.getState()[id].hotCues;
+                const pristine = liveCues.every((c) => c == null);
+                if (pristine && Array.isArray(cached?.hot_cues) && cached.hot_cues.length === 8) {
+                  patch.hotCues = cached.hot_cues.map((v) => (v == null ? null : Number(v)));
+                  // Mark this exact array as "already in DB" so the persist
+                  // effect doesn't write it back.
+                  cuesAlreadyPersistedRef.current = { key: trackKey, json: JSON.stringify(patch.hotCues) };
+                }
+                if (Object.keys(patch).length) setDeck(id, patch);
               }
+              if (cached?.bpm) return; // BPM already cached → skip analysis
             }
           } catch { /* network noise — fall through to analysis */ }
 
-          // 2. Cache miss → analyze
+          // 2. Cache miss → analyze BPM
           setAnalyzingBPM(true);
           const resp = await fetch(playUrl);
           if (!resp.ok) throw new Error(`fetch ${resp.status}`);
@@ -241,12 +260,10 @@ export default function Deck({ id, label, accent }) {
           const ac = getAudioContext().ctx;
           const buf = await ac.decodeAudioData(arr.slice(0));
           const bpm = await analyzeBPM(buf);
-          // If the user already swapped tracks while we were analyzing, drop result
           const cur = useDJStore.getState()[id].track;
           if (cur?.key !== trackKey) return;
           if (bpm && isFinite(bpm) && bpm >= 60 && bpm <= 200) {
             setDeck(id, { baseBPM: Math.round(bpm * 10) / 10 });
-            // Cache for next time (fire-and-forget)
             fetch(`${apiBase}/api/tracks/meta`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -291,6 +308,34 @@ export default function Deck({ id, label, accent }) {
     const file = e.dataTransfer.files?.[0]; if (!file) return;
     loadTrack(await trackFromFile(file, "drop"));
   };
+
+  // Persist hot cues to MongoDB whenever they change. Debounced 600ms so
+  // back-to-back set/clears coalesce into one POST. Skips local-file tracks
+  // (their key is a one-off `local-<timestamp>` so caching them is pointless).
+  // Skips the first observation per-track-key (treats it as the baseline) so
+  // the all-null reset that happens during loadTrack doesn't overwrite the
+  // cached cues in the DB.
+  useEffect(() => {
+    const trackKey = deck.track?.key;
+    if (!trackKey || trackKey.startsWith("local-") || trackKey.startsWith("drop-")) return;
+    const cuesJson = JSON.stringify(deck.hotCues);
+    const ref = cuesAlreadyPersistedRef.current;
+    // First time we see this track key → record as baseline, no POST
+    if (ref.key !== trackKey) {
+      cuesAlreadyPersistedRef.current = { key: trackKey, json: cuesJson };
+      return;
+    }
+    if (cuesJson === ref.json) return; // unchanged
+    const t = setTimeout(() => {
+      cuesAlreadyPersistedRef.current = { key: trackKey, json: cuesJson };
+      fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/meta`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: trackKey, hot_cues: deck.hotCues }),
+      }).catch(() => { /* fire-and-forget */ });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [deck.hotCues, deck.track?.key]);
 
   // listen to dj:load
   useEffect(() => {

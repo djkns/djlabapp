@@ -198,11 +198,12 @@ class SavedMixCreate(BaseModel):
 
 
 class TrackMeta(BaseModel):
-    """Cached per-track analysis (currently just BPM, future-proofed for key, cues, etc.)."""
+    """Cached per-track analysis (BPM, key) and per-track user data (hot cues)."""
     model_config = ConfigDict(extra="ignore")
     key: str
     bpm: Optional[float] = None
     musical_key: Optional[str] = None
+    hot_cues: Optional[List[Optional[float]]] = None
     updated_at: Optional[datetime] = None
 
 
@@ -210,6 +211,7 @@ class TrackMetaUpsert(BaseModel):
     key: str
     bpm: Optional[float] = None
     musical_key: Optional[str] = None
+    hot_cues: Optional[List[Optional[float]]] = None
 
 
 @api_router.get("/")
@@ -269,6 +271,12 @@ async def upsert_track_meta(payload: TrackMetaUpsert):
         update["bpm"] = round(payload.bpm, 2)
     if payload.musical_key is not None:
         update["musical_key"] = payload.musical_key
+    if payload.hot_cues is not None:
+        # Normalise length 8, clip negatives
+        cues = list(payload.hot_cues)[:8]
+        while len(cues) < 8:
+            cues.append(None)
+        update["hot_cues"] = [None if c is None else round(max(0.0, float(c)), 3) for c in cues]
     await db.track_meta.update_one(
         {"key": payload.key},
         {"$set": update},
