@@ -42,30 +42,12 @@ export function listMidiInputs() {
 
 function handleMessage(e) {
   const [status, data1, data2] = e.data;
-  const type = status & 0xF0;
-  // #1 FILTER BAD MIDI — only Control Change (CC) and Note On/Off pass through.
-  // Everything else (SysEx, Clock, Aftertouch, Pitch Bend, etc.) is ignored at
-  // the source so no random triggers or timing glitches can happen downstream.
-  if (type !== 0xB0 && type !== 0x90 && type !== 0x80) return;
-
   const channel = status & 0x0F;
-  const d2 = data2 ?? 0;
-
-  // #5 DEADZONE — suppress CC jitter (controllers like T7 wiggle ±1 at rest).
-  // Only applies to CC with data2 changes ≤ 1 since the last event for the
-  // same (channel, cc) — button presses via Note On/Off are never filtered.
-  if (type === 0xB0) {
-    const key = (channel << 8) | data1;
-    const prev = _lastCCValues[key];
-    if (prev !== undefined && Math.abs(d2 - prev) < 2) return;
-    _lastCCValues[key] = d2;
-  }
-
+  const type = status & 0xF0;
   window.dispatchEvent(new CustomEvent("djlab:midi", {
-    detail: { status, type, data1, data2: d2, channel, raw: e.data, ts: performance.now() },
+    detail: { status, type, data1, data2: data2 ?? 0, channel, raw: e.data, ts: performance.now() },
   }));
 }
-const _lastCCValues = {};
 
 export function setActiveInput(deviceId) {
   if (!midiAccess) return false;
