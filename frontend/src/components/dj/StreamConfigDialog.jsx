@@ -114,14 +114,16 @@ export default function StreamConfigDialog({ open, onClose }) {
               data-testid="stream-user" placeholder="source"
               autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
               name="dj-stream-user"
-              readOnly onFocus={(e) => e.target.removeAttribute("readOnly")} />
+              data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
           </Field>
           <Field label="Source password" required>
-            <input type="password" value={cfg.password} onChange={(e) => save({ password: e.target.value })}
-              data-testid="stream-password" placeholder="••••••••••"
-              autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck="false"
-              name="dj-stream-password"
-              readOnly onFocus={(e) => e.target.removeAttribute("readOnly")} />
+            <input type="text" value={cfg.password}
+              onChange={(e) => save({ password: e.target.value })}
+              data-testid="stream-password" placeholder="enter source password"
+              autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              name="dj-stream-secret"
+              data-lpignore="true" data-1p-ignore="true" data-form-type="other"
+              style={{ WebkitTextSecurity: cfg.password ? "disc" : "none", fontFamily: "monospace" }} />
           </Field>
           <Field label="MP3 bitrate">
             <select value={cfg.bitrate} onChange={(e) => save({ bitrate: +e.target.value })}
