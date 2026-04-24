@@ -151,28 +151,35 @@ export function createDeckChain(audioEl) {
   return {
     ctx, source, trim, low, mid, high, colorFilter, preFader, cueSend, volume, crossfade, analyser,
     fx1, fx2,
-    setTrim: (db) => { trim.gain.value = Math.pow(10, db / 20); },
-    setLow:  (db) => { low.gain.value  = db; },
-    setMid:  (db) => { mid.gain.value  = db; },
-    setHigh: (db) => { high.gain.value = db; },
+    // All user-controlled gain/freq changes use setTargetAtTime for smooth
+    // 10ms ramps — this kills "zipper noise" (audible clicks) that you'd get
+    // from writing `.value` directly on every drag pixel. It also decouples
+    // the UI event rate from the audio scheduling, so dragging a fader no
+    // longer perturbs playback.
+    setTrim: (db) => {
+      const v = Math.pow(10, db / 20);
+      trim.gain.setTargetAtTime(v, ctx.currentTime, 0.01);
+    },
+    setLow:  (db) => { low.gain.setTargetAtTime(db, ctx.currentTime, 0.02); },
+    setMid:  (db) => { mid.gain.setTargetAtTime(db, ctx.currentTime, 0.02); },
+    setHigh: (db) => { high.gain.setTargetAtTime(db, ctx.currentTime, 0.02); },
     setFilter: (v) => {
-      // v ∈ [-1, 1]. 0 = bypass.
       if (Math.abs(v) < 0.02) {
         colorFilter.type = "allpass";
-        colorFilter.frequency.value = 22000;
+        colorFilter.frequency.setTargetAtTime(22000, ctx.currentTime, 0.02);
       } else if (v < 0) {
         colorFilter.type = "lowpass";
-        // sweep from 22000 at v=0 down to 150 at v=-1 (exponential)
-        colorFilter.frequency.value = 22000 * Math.pow(150 / 22000, -v);
+        colorFilter.frequency.setTargetAtTime(
+          22000 * Math.pow(150 / 22000, -v), ctx.currentTime, 0.02);
       } else {
         colorFilter.type = "highpass";
-        // sweep from 15 at v=0 up to 8000 at v=1 (exponential)
-        colorFilter.frequency.value = 15 * Math.pow(8000 / 15, v);
+        colorFilter.frequency.setTargetAtTime(
+          15 * Math.pow(8000 / 15, v), ctx.currentTime, 0.02);
       }
     },
-    setVolume: (v) => { volume.gain.value = v; },
-    setCrossfade: (v) => { crossfade.gain.value = v; },
-    setCueActive: (on) => { cueSend.gain.value = on ? 1 : 0; },
+    setVolume: (v) => { volume.gain.setTargetAtTime(v, ctx.currentTime, 0.01); },
+    setCrossfade: (v) => { crossfade.gain.setTargetAtTime(v, ctx.currentTime, 0.01); },
+    setCueActive: (on) => { cueSend.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.02); },
   };
 }
 
@@ -193,15 +200,15 @@ export function getAllDeckChains() { return deckChains; }
 // Headphone helpers
 export function setHeadphoneMix(value01) {
   // 0 = full master, 1 = full cue
-  const { hpCueGain, hpMasterGain } = getAudioContext();
+  const { ctx, hpCueGain, hpMasterGain } = getAudioContext();
   const clamped = Math.max(0, Math.min(1, value01));
-  hpCueGain.gain.value = clamped;
-  hpMasterGain.gain.value = 1 - clamped;
+  hpCueGain.gain.setTargetAtTime(clamped, ctx.currentTime, 0.02);
+  hpMasterGain.gain.setTargetAtTime(1 - clamped, ctx.currentTime, 0.02);
 }
 
 export function setHeadphoneVolume(v) {
-  const { hpGain } = getAudioContext();
-  hpGain.gain.value = Math.max(0, Math.min(1.5, v));
+  const { ctx, hpGain } = getAudioContext();
+  hpGain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, v)), ctx.currentTime, 0.02);
 }
 
 export async function enableHeadphones(enabled) {
@@ -276,7 +283,8 @@ export function enableMicWithStream(stream) {
 
 export function setMicVolume(v) {
   if (!micGain) return;
-  micGain.gain.value = Math.max(0, Math.min(1.5, v));
+  const ctx = getAudioContext().ctx;
+  micGain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, v)), ctx.currentTime, 0.02);
 }
 
 export function isMicActive() { return !!micStream; }

@@ -221,8 +221,8 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   }, [crossfader, deckChains]);
 
   useEffect(() => {
-    const { masterGain } = getAudioContext();
-    masterGain.gain.value = masterVolume;
+    const { ctx, masterGain } = getAudioContext();
+    masterGain.gain.setTargetAtTime(masterVolume, ctx.currentTime, 0.01);
   }, [masterVolume]);
 
   // Mic enable/disable + volume → audio engine
