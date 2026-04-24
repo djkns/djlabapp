@@ -11,7 +11,6 @@ import MidiDispatcher from "@/components/dj/MidiDispatcher";
 import PlatterLEDFeedback from "@/components/dj/PlatterLEDFeedback";
 import StreamConfigDialog from "@/components/dj/StreamConfigDialog";
 import ExportMixDialog from "@/components/dj/ExportMixDialog";
-import StackedWaveform from "@/components/dj/StackedWaveform";
 import { resumeAudioContext } from "@/lib/audioEngine";
 import { subscribeStreamStatus } from "@/lib/streamService";
 import { requestMidi, listMidiInputs, setActiveInput, addStateChangeListener, getActiveInputId } from "@/lib/midi";
@@ -113,8 +112,6 @@ export default function DJLab() {
           onOpenExport={() => setExportOpen(true)}
           canExport={!!lastRecording?.blob}
         />
-
-        <StackedWaveform />
 
         <main className="flex-1 grid grid-cols-12 gap-3 p-3 overflow-hidden relative z-10 min-h-0"
               style={{ gridTemplateRows: "1fr" }}>
