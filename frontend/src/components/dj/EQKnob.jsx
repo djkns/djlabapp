@@ -8,6 +8,13 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
   const ref = useRef(null);
   const [dragging, setDragging] = useState(false);
   const startRef = useRef({ y: 0, v: 0 });
+  // rAF-throttle the onChange callback so we fire at most 60 times/sec. Without
+  // this, mousemove can fire 100+ times/sec → 100+ store commits/sec → React
+  // reconciler starves the main thread → audio callback misses its slot →
+  // the WAV glitches. rAF naturally aligns us to the display refresh and gives
+  // the audio buffer enough time to fill.
+  const pendingRef = useRef(null);
+  const rafRef = useRef(null);
 
   const range = max - min;
   // map value -> angle -135..+135
@@ -15,13 +22,29 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
 
   useEffect(() => {
     if (!dragging) return;
+    const flush = () => {
+      rafRef.current = null;
+      if (pendingRef.current != null) {
+        const v = pendingRef.current;
+        pendingRef.current = null;
+        onChange?.(v);
+      }
+    };
     const onMove = (e) => {
       const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
       const dy = startRef.current.y - y; // drag up = increase
       const next = Math.max(min, Math.min(max, startRef.current.v + dy * (range / 140)));
-      onChange?.(next);
+      pendingRef.current = next;
+      if (rafRef.current == null) rafRef.current = requestAnimationFrame(flush);
     };
-    const onUp = () => setDragging(false);
+    const onUp = () => {
+      setDragging(false);
+      // Final commit in case rAF hasn't flushed yet
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (pendingRef.current != null) {
+        const v = pendingRef.current; pendingRef.current = null; onChange?.(v);
+      }
+    };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     window.addEventListener("touchmove", onMove);
@@ -31,6 +54,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [dragging, min, max, onChange, range]);
 

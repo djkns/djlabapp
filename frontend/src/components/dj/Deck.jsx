@@ -130,10 +130,20 @@ export default function Deck({ id, label, accent }) {
   // PFL / headphone cue on this deck
   useEffect(() => { chainRef.current?.setCueActive(!!deck.pflOn); }, [deck.pflOn]);
 
-  // Tempo (playback rate) + keylock
+  // Tempo (playback rate) + keylock. Throttle playbackRate writes so rapid
+  // tempo-fader drags don't cause the HTMLMediaElement decoder to
+  // continuously re-sync (audible as clicks / hiccups during tempo moves).
+  const tempoWriteRef = useRef({ rate: 1, lastWrite: 0 });
   useEffect(() => {
     const el = audioElRef.current; if (!el) return;
-    el.playbackRate = 1 + deck.tempoPct / 100;
+    const targetRate = 1 + deck.tempoPct / 100;
+    const delta = Math.abs(targetRate - tempoWriteRef.current.rate);
+    const now = performance.now();
+    // Write immediately if >0.5% change since last write; otherwise coalesce at 33fps
+    if (delta > 0.005 || now - tempoWriteRef.current.lastWrite > 30) {
+      el.playbackRate = targetRate;
+      tempoWriteRef.current = { rate: targetRate, lastWrite: now };
+    }
     el.preservesPitch = deck.keylock;
   }, [deck.tempoPct, deck.keylock]);
 

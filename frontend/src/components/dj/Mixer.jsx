@@ -10,6 +10,7 @@ import {
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
+import useRafThrottledRangeChange from "@/lib/useRafThrottledRangeChange";
 
 // Thin vertical stereo VU bar driven by a deck's analyser
 function ChannelVU({ analyser, tall = false }) {
@@ -116,6 +117,7 @@ function TempoFader({ deckId, letter }) {
   const tempoPct = useDJStore((s) => s[deckId].tempoPct);
   const tempoRange = useDJStore((s) => s[deckId].tempoRange);
   const setDeck = useDJStore((s) => s.setDeck);
+  const rangeHandlers = useRafThrottledRangeChange((v) => setDeck(deckId, { tempoPct: v }));
   return (
     <div className="flex flex-col items-center gap-1 pt-2">
       <span className="label-tiny">TEMPO</span>
@@ -125,8 +127,11 @@ function TempoFader({ deckId, letter }) {
       <input
         type="range"
         min={-tempoRange} max={tempoRange} step={0.1}
-        value={tempoPct}
-        onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
+        defaultValue={tempoPct}
+        key={tempoRange}
+        onChange={rangeHandlers.onChange}
+        onMouseUp={rangeHandlers.onPointerUp}
+        onTouchEnd={rangeHandlers.onPointerUp}
         onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
         className="fader-vert"
         style={{ height: 160 }}
@@ -146,12 +151,15 @@ function VolumeFader({ deckId, chain }) {
   const letter = deckId === "deckA" ? "a" : "b";
   const liveChain = chain || getDeckChain(deckId);
   useEffect(() => { liveChain?.setVolume?.(volume); }, [liveChain, volume]);
+  const rangeHandlers = useRafThrottledRangeChange((v) => setDeck(deckId, { volume: v }));
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="label-tiny">VOL {letter.toUpperCase()}</span>
       <div className="flex items-end gap-1">
-        <input type="range" min={0} max={1} step={0.01} value={volume}
-          onChange={(e) => setDeck(deckId, { volume: +e.target.value })}
+        <input type="range" min={0} max={1} step={0.01} defaultValue={volume}
+          onChange={rangeHandlers.onChange}
+          onMouseUp={rangeHandlers.onPointerUp}
+          onTouchEnd={rangeHandlers.onPointerUp}
           className="fader-vert" style={{ height: 110 }}
           data-testid={`channel-${letter}-volume`} />
         <ChannelVU analyser={chain?.analyser} />
@@ -179,8 +187,6 @@ function MasterVU({ levels }) {
 }
 
 export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOpenMidi }) {
-  const crossfader = useDJStore((s) => s.crossfader);
-  const setCrossfader = useDJStore((s) => s.setCrossfader);
   const masterVolume = useDJStore((s) => s.masterVolume);
   const setMasterVolume = useDJStore((s) => s.setMasterVolume);
   const recording = useDJStore((s) => s.recording);
@@ -209,16 +215,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     applyCrossfade();
     return () => window.removeEventListener("dj:chain-ready", applyCrossfade);
   }, []);
-
-  useEffect(() => {
-    const { a, b } = crossfadeGains(crossfader);
-    // Prefer module-level registry (avoids React effect ordering race); fall
-    // back to props for decks that haven't registered yet.
-    const chA = getDeckChain("deckA") || deckChains?.deckA;
-    const chB = getDeckChain("deckB") || deckChains?.deckB;
-    chA?.setCrossfade?.(a);
-    chB?.setCrossfade?.(b);
-  }, [crossfader, deckChains]);
 
   useEffect(() => {
     const { ctx, masterGain } = getAudioContext();
@@ -416,20 +412,38 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       </div>
 
       {/* Bottom transport rail — crossfader owns the bottom */}
-      <div className="pt-1 pb-0.5 border-t border-[#D10A0A]/40 bg-gradient-to-b from-transparent to-[#0f0f0f]">
-        <div className="flex justify-between items-center px-1">
-          <span className="label-tiny" style={{ color: "#FF1F1F" }}>A</span>
-          <span className="label-tiny">CROSSFADER</span>
-          <span className="label-tiny" style={{ color: "#FF1F1F" }}>B</span>
-        </div>
-        <div className="relative">
-          <div className="absolute inset-0 rounded-full pointer-events-none cf-trail"
-            style={{ opacity: 0.9, transform: `translateX(${crossfader * 20}%)`, transition: "transform 80ms ease-out" }} />
-          <input type="range" min={-1} max={1} step={0.01} value={crossfader}
-            onChange={(e) => setCrossfader(+e.target.value)}
-            onDoubleClick={() => setCrossfader(0)}
-            className="fader-horiz w-full" data-testid="crossfader" />
-        </div>
+      <CrossfaderRail />
+    </div>
+  );
+}
+
+function CrossfaderRail() {
+  const crossfader = useDJStore((s) => s.crossfader);
+  const setCrossfader = useDJStore((s) => s.setCrossfader);
+  // Wire crossfader value -> deck chains. Only this component re-renders on
+  // crossfader changes, so the rest of the Mixer isn't touched on drag.
+  useEffect(() => {
+    const { a, b } = crossfadeGains(crossfader);
+    getDeckChain("deckA")?.setCrossfade?.(a);
+    getDeckChain("deckB")?.setCrossfade?.(b);
+  }, [crossfader]);
+  const rangeHandlers = useRafThrottledRangeChange(setCrossfader);
+  return (
+    <div className="pt-1 pb-0.5 border-t border-[#D10A0A]/40 bg-gradient-to-b from-transparent to-[#0f0f0f]">
+      <div className="flex justify-between items-center px-1">
+        <span className="label-tiny" style={{ color: "#FF1F1F" }}>A</span>
+        <span className="label-tiny">CROSSFADER</span>
+        <span className="label-tiny" style={{ color: "#FF1F1F" }}>B</span>
+      </div>
+      <div className="relative">
+        <div className="absolute inset-0 rounded-full pointer-events-none cf-trail"
+          style={{ opacity: 0.9, transform: `translateX(${crossfader * 20}%)`, transition: "transform 80ms ease-out" }} />
+        <input type="range" min={-1} max={1} step={0.01} defaultValue={crossfader}
+          onChange={rangeHandlers.onChange}
+          onMouseUp={rangeHandlers.onPointerUp}
+          onTouchEnd={rangeHandlers.onPointerUp}
+          onDoubleClick={() => setCrossfader(0)}
+          className="fader-horiz w-full" data-testid="crossfader" />
       </div>
     </div>
   );
