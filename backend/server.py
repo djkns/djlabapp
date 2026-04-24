@@ -360,17 +360,20 @@ async def stream_ws(ws: WebSocket):
     ffmpeg_cmd = [
         "ffmpeg",
         "-hide_banner",
-        "-loglevel", "error",
+        "-loglevel", "info",
         "-re",
+        "-f", "webm",
         "-i", "pipe:0",
         "-c:a", "libmp3lame",
         "-b:a", f"{bitrate}k",
+        "-ar", "44100",
+        "-ac", "2",
         "-f", "mp3",
         "-content_type", "audio/mpeg",
         "-ice_name", station_name,
         "-ice_genre", genre,
         "-ice_description", description,
-        "-legacy_icecast", "1",
+        "-user_agent", "DJ Lab / NU Vibe",
         url,
     ]
 

@@ -6,8 +6,8 @@ import { startStream, stopStream, subscribeStreamStatus, isStreaming } from "@/l
 const STORAGE_KEY = "djlab.streamConfig";
 const DEFAULT_CFG = {
   host: "djsandmc.media",
-  port: 8000,
-  mount: "/radio.mp3",
+  port: 8005,
+  mount: "/radio",
   user: "source",
   password: "",
   bitrate: 128,
@@ -105,7 +105,7 @@ export default function StreamConfigDialog({ open, onClose }) {
           </Field>
           <Field label="Mount point" required>
             <input value={cfg.mount} onChange={(e) => save({ mount: e.target.value })}
-              data-testid="stream-mount" placeholder="/radio.mp3"
+              data-testid="stream-mount" placeholder="/radio  (not /radio.mp3)"
               autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
               name="dj-stream-mount" />
           </Field>
