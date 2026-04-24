@@ -7,44 +7,31 @@ import { useEffect, useRef, useState } from "react";
 export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#D10A0A", size = 48 }) {
   const ref = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [localValue, setLocalValue] = useState(value);
   const startRef = useRef({ y: 0, v: 0 });
-  // rAF-throttle the onChange callback so we fire at most 60 times/sec. Without
-  // this, mousemove can fire 100+ times/sec → 100+ store commits/sec → React
-  // reconciler starves the main thread → audio callback misses its slot →
-  // the WAV glitches. rAF naturally aligns us to the display refresh and gives
-  // the audio buffer enough time to fill.
-  const pendingRef = useRef(null);
-  const rafRef = useRef(null);
 
+  // Sync external (MIDI / store) value changes — but NOT while the user is
+  // actively dragging, otherwise we'd overwrite the user's own drag updates
+  // and the knob would "bounce" as it fights React's re-render cycle.
+  useEffect(() => {
+    if (!dragging) setLocalValue(value);
+  }, [value, dragging]);
+
+  const display = dragging ? localValue : value;
   const range = max - min;
   // map value -> angle -135..+135
-  const angle = ((value - min) / range) * 270 - 135;
+  const angle = ((display - min) / range) * 270 - 135;
 
   useEffect(() => {
     if (!dragging) return;
-    const flush = () => {
-      rafRef.current = null;
-      if (pendingRef.current != null) {
-        const v = pendingRef.current;
-        pendingRef.current = null;
-        onChange?.(v);
-      }
-    };
     const onMove = (e) => {
       const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
       const dy = startRef.current.y - y; // drag up = increase
       const next = Math.max(min, Math.min(max, startRef.current.v + dy * (range / 140)));
-      pendingRef.current = next;
-      if (rafRef.current == null) rafRef.current = requestAnimationFrame(flush);
+      setLocalValue(next);
+      onChange?.(next);
     };
-    const onUp = () => {
-      setDragging(false);
-      // Final commit in case rAF hasn't flushed yet
-      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-      if (pendingRef.current != null) {
-        const v = pendingRef.current; pendingRef.current = null; onChange?.(v);
-      }
-    };
+    const onUp = () => setDragging(false);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     window.addEventListener("touchmove", onMove);
@@ -54,18 +41,18 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
-      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [dragging, min, max, onChange, range]);
 
   const startDrag = (e) => {
     const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
     startRef.current = { y, v: value };
+    setLocalValue(value);
     setDragging(true);
     e.preventDefault();
   };
 
-  const active = Math.abs(value) > 0.2;
+  const active = Math.abs(display) > 0.2;
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -74,7 +61,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
         data-testid={testid}
         onMouseDown={startDrag}
         onTouchStart={startDrag}
-        onDoubleClick={() => onChange?.(0)}
+        onDoubleClick={() => { setLocalValue(0); onChange?.(0); }}
         className="relative rounded-full cursor-pointer select-none transition-shadow"
         style={{
           width: size, height: size,

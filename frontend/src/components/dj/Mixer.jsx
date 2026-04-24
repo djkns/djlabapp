@@ -10,6 +10,7 @@ import {
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
+import SmoothSlider from "./SmoothSlider";
 
 // Thin vertical stereo VU bar driven by a deck's analyser
 function ChannelVU({ analyser, tall = false }) {
@@ -122,15 +123,14 @@ function TempoFader({ deckId, letter }) {
       <span className="font-mono-dj text-[9px] text-[#A1A1AA]" data-testid={`channel-${letter}-tempo-readout`}>
         {tempoPct > 0 ? "+" : ""}{tempoPct.toFixed(1)}%
       </span>
-      <input
-        type="range"
+      <SmoothSlider
         min={-tempoRange} max={tempoRange} step={0.1}
         value={tempoPct}
-        onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
+        onChange={(v) => setDeck(deckId, { tempoPct: v })}
         onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
         className="fader-vert"
         style={{ height: 160 }}
-        data-testid={`channel-${letter}-tempo`}
+        testid={`channel-${letter}-tempo`}
         title="Double-click to reset"
       />
       <span className="label-tiny">±{tempoRange}%</span>
@@ -144,18 +144,17 @@ function VolumeFader({ deckId, chain }) {
   const letter = deckId === "deckA" ? "a" : "b";
   const liveChain = chain || getDeckChain(deckId);
   useEffect(() => { liveChain?.setVolume?.(volume); }, [liveChain, volume]);
-  // Controlled input so MIDI / Sync / external changes update the thumb.
-  // Performance is already isolated because only this tiny component
-  // re-renders on volume changes (siblings use sliced selectors).
-  const onChange = (e) => setDeck(deckId, { volume: +e.target.value });
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="label-tiny">VOL {letter.toUpperCase()}</span>
       <div className="flex items-end gap-1">
-        <input type="range" min={0} max={1} step={0.01} value={volume}
-          onChange={onChange}
+        <SmoothSlider
+          min={0} max={1} step={0.01}
+          value={volume}
+          onChange={(v) => setDeck(deckId, { volume: v })}
           className="fader-vert" style={{ height: 110 }}
-          data-testid={`channel-${letter}-volume`} />
+          testid={`channel-${letter}-volume`}
+        />
         <ChannelVU analyser={chain?.analyser} />
       </div>
     </div>
@@ -431,10 +430,13 @@ function CrossfaderRail() {
       <div className="relative">
         <div className="absolute inset-0 rounded-full pointer-events-none cf-trail"
           style={{ opacity: 0.9, transform: `translateX(${crossfader * 20}%)`, transition: "transform 80ms ease-out" }} />
-        <input type="range" min={-1} max={1} step={0.01} value={crossfader}
-          onChange={(e) => setCrossfader(+e.target.value)}
+        <SmoothSlider
+          min={-1} max={1} step={0.01}
+          value={crossfader}
+          onChange={setCrossfader}
           onDoubleClick={() => setCrossfader(0)}
-          className="fader-horiz w-full" data-testid="crossfader" />
+          className="fader-horiz w-full"
+          testid="crossfader" />
       </div>
     </div>
   );
