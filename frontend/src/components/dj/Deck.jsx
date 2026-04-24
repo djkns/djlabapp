@@ -522,13 +522,12 @@ export default function Deck({ id, label, accent }) {
         </label>
       </div>
 
-      {/* Controls row 2 — Hot cues + Loop + FX slots */}
+      {/* Controls row 2 — Hot cues + Loop + single FX rack */}
       <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
         <HotCuePad deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
         <LoopControls deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
-        <div className="flex gap-1.5" data-testid={`deck-${letter}-fx-rack`}>
+        <div className="flex" data-testid={`deck-${letter}-fx-rack`}>
           <FXSlot deckId={id} slotKey="fx1" chain={chainRef.current} />
-          <FXSlot deckId={id} slotKey="fx2" chain={chainRef.current} />
         </div>
       </div>
     </div>

@@ -45,7 +45,7 @@ export default function FXSlot({ deckId, slotKey, chain }) {
          data-testid={`deck-${letter}-${slotKey}`}
          style={state.enabled ? { boxShadow: `inset 0 0 8px ${color}33, 0 0 6px ${color}66` } : {}}>
       <div className="flex items-center justify-between gap-1">
-        <span className="label-tiny" style={{ color: state.enabled ? color : "#A1A1AA" }}>FX{slotNum}</span>
+        <span className="label-tiny" style={{ color: state.enabled ? color : "#A1A1AA" }}>FX</span>
         <button
           data-testid={`deck-${letter}-${slotKey}-toggle`}
           onClick={() => setFX(deckId, slotKey, { enabled: !state.enabled })}
