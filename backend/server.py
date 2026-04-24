@@ -327,10 +327,16 @@ app.include_router(api_router)
 _active_streams: dict[str, subprocess.Popen] = {}
 
 
+from urllib.parse import quote as urlquote
+
+
 def _build_icecast_url(user: str, password: str, host: str, port: int, mount: str) -> str:
     # Ensure mount starts with '/'
     m = mount if mount.startswith('/') else '/' + mount
-    return f"icecast://{user}:{password}@{host}:{port}{m}"
+    # URL-encode credentials so characters like $, @, :, # in passwords work.
+    u = urlquote(user, safe='')
+    p = urlquote(password, safe='')
+    return f"icecast://{u}:{p}@{host}:{port}{m}"
 
 
 @app.websocket("/api/ws/stream")
