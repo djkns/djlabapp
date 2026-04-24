@@ -26,12 +26,12 @@ export default function StackedWaveform() {
     barWidth: 2,
     barRadius: 2,
     barGap: 1,
-    height: 28,
+    height: 40,
     normalize: true,
-    interact: false,
+    interact: true,
     autoScroll: true,
     autoCenter: true,
-    minPxPerSec: 60,
+    minPxPerSec: 80,
     hideScrollbar: true,
     fillParent: false,
   };
@@ -46,6 +46,15 @@ export default function StackedWaveform() {
         progressColor: "#60A5FA",
       });
       try { wsARef.current.setMuted(true); } catch { /* v7: setMuted ok */ }
+      // Click on the stacked waveform → seek the underlying deck.
+      // Read getCurrentTime() (after wavesurfer has computed the seek) instead
+      // of relX*duration, because with autoScroll+autoCenter the visible
+      // viewport only shows a window around the current time.
+      wsARef.current.on("click", () => {
+        const t = wsARef.current.getCurrentTime();
+        window.dispatchEvent(new CustomEvent("dj:stacked-seek",
+          { detail: { deckId: "deckA", time: t } }));
+      });
     }
     if (containerB.current && !wsBRef.current) {
       wsBRef.current = WaveSurfer.create({
@@ -55,6 +64,11 @@ export default function StackedWaveform() {
         progressColor: "#F87171",
       });
       try { wsBRef.current.setMuted(true); } catch { /* v7: setMuted ok */ }
+      wsBRef.current.on("click", () => {
+        const t = wsBRef.current.getCurrentTime();
+        window.dispatchEvent(new CustomEvent("dj:stacked-seek",
+          { detail: { deckId: "deckB", time: t } }));
+      });
     }
     return () => {
       wsARef.current?.destroy(); wsARef.current = null;
@@ -76,14 +90,37 @@ export default function StackedWaveform() {
     return () => window.removeEventListener("dj:track-loaded", h);
   }, []);
 
-  // Sync scroll position to each deck's currentTime via rAF
+  // Mirror each deck's play/pause + tempo + seeks onto the stacked wavesurfer.
+  // `autoScroll` only advances while the internal media is actually playing,
+  // so we call play() / pause() on the (muted) internal audio to let
+  // wavesurfer scroll the waveform past the centered playhead. setTime() on
+  // every rAF frame corrects any drift and handles cue-point jumps.
   useEffect(() => {
     let raf;
+    const mirror = (ws, s) => {
+      if (!ws || !s.duration) return;
+      // Playback rate (tempo)
+      try {
+        const rate = 1 + (s.tempoPct || 0) / 100;
+        if (Math.abs(ws.getPlaybackRate() - rate) > 0.001) ws.setPlaybackRate(rate, s.keylock);
+      } catch { /* noop */ }
+      // Play / pause mirror (muted, so no audio out)
+      try {
+        const wsPlaying = ws.isPlaying();
+        if (s.playing && !wsPlaying) { ws.setMuted(true); ws.play().catch(() => {}); }
+        else if (!s.playing && wsPlaying) ws.pause();
+      } catch { /* noop */ }
+      // Keep the time in sync (fixes drift, seeks, cue jumps)
+      try {
+        const drift = Math.abs(ws.getCurrentTime() - (s.currentTime || 0));
+        if (drift > 0.15) ws.setTime(s.currentTime || 0);
+      } catch { /* noop */ }
+    };
     const loop = () => {
       const sA = useDJStore.getState().deckA;
       const sB = useDJStore.getState().deckB;
-      try { if (wsARef.current && sA.duration) wsARef.current.setTime(sA.currentTime || 0); } catch { /* noop */ }
-      try { if (wsBRef.current && sB.duration) wsBRef.current.setTime(sB.currentTime || 0); } catch { /* noop */ }
+      mirror(wsARef.current, sA);
+      mirror(wsBRef.current, sB);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -111,9 +148,9 @@ export default function StackedWaveform() {
              background:
                "repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 40px), #050505",
            }}>
-        <div ref={containerA} className="h-[28px]" data-testid="stacked-wave-a" />
+        <div ref={containerA} className="h-[40px]" data-testid="stacked-wave-a" />
         <div className="h-px bg-white/10" />
-        <div ref={containerB} className="h-[28px]" data-testid="stacked-wave-b" />
+        <div ref={containerB} className="h-[40px]" data-testid="stacked-wave-b" />
 
         {/* Centered playhead line */}
         <div className="absolute top-0 bottom-0 left-1/2 pointer-events-none z-10"

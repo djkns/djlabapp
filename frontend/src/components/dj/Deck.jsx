@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import WaveSurfer from "wavesurfer.js";
 import { Play, Pause, SkipBack, Upload, Headphones } from "lucide-react";
 import SpinningVinyl from "./SpinningVinyl";
 import EQKnob from "./EQKnob";
@@ -21,9 +20,7 @@ const formatTime = (s) => {
 
 export default function Deck({ id, label, accent }) {
   const letter = id === "deckA" ? "a" : "b";
-  const waveRef = useRef(null);
   const audioElRef = useRef(null);
-  const wsRef = useRef(null);
   const chainRef = useRef(null);
   const rafRef = useRef(null);
   const currentTimeRef = useRef(0);
@@ -97,31 +94,9 @@ export default function Deck({ id, label, accent }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Wavesurfer — scrolling waveform with centered playhead (Rekordbox/Traktor style)
-  useEffect(() => {
-    if (!waveRef.current || !audioElRef.current) return;
-    const ws = WaveSurfer.create({
-      container: waveRef.current,
-      waveColor: "rgba(209, 10, 10, 0.55)",
-      progressColor: accent || "#FF1F1F",
-      cursorColor: "transparent",      // we render our own centered playhead
-      cursorWidth: 0,
-      barWidth: 2,
-      barRadius: 2,
-      barGap: 1,
-      height: 80,
-      normalize: true,
-      media: audioElRef.current,
-      interact: true,
-      autoScroll: true,               // scrolls past the cursor as it plays
-      autoCenter: true,               // keeps playhead in the center
-      minPxPerSec: 120,               // zoom: ~10s window
-      hideScrollbar: true,
-      fillParent: false,
-    });
-    wsRef.current = ws;
-    return () => { ws.destroy(); wsRef.current = null; };
-  }, [accent]);
+  // Wavesurfer waveform now lives in the top "Beat Grid" stacked view —
+  // see StackedWaveform.jsx. Decks no longer render their own per-deck
+  // waveform (cleaner UI, less to track during a mix).
 
   // EQ/Volume/Filter/Trim are wired by Mixer's ChannelStrip (single source of
   // truth). Removing them from Deck means Deck doesn't re-render on those
@@ -205,7 +180,6 @@ export default function Deck({ id, label, accent }) {
       }
       el.src = playUrl;
       el.load();
-      if (wsRef.current) { await wsRef.current.load(playUrl).catch(() => {}); }
       // Let the top-of-screen stacked beat-grid preview re-load its peaks
       window.dispatchEvent(new CustomEvent("dj:track-loaded", { detail: { deckId: id, url: playUrl } }));
       setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
@@ -248,6 +222,20 @@ export default function Deck({ id, label, accent }) {
     window.addEventListener("dj:load", h);
     return () => window.removeEventListener("dj:load", h);
   }, [id, loadTrack]);
+
+  // Seek requests from the stacked beat-grid (top of the page)
+  useEffect(() => {
+    const h = (ev) => {
+      if (ev.detail?.deckId !== id) return;
+      const t = ev.detail.time;
+      const el = audioElRef.current;
+      if (!el || t == null) return;
+      try { el.currentTime = Math.max(0, Math.min((el.duration || t) - 0.05, t)); } catch { /* noop */ }
+      setDeck(id, { currentTime: el.currentTime });
+    };
+    window.addEventListener("dj:stacked-seek", h);
+    return () => window.removeEventListener("dj:stacked-seek", h);
+  }, [id, setDeck]);
 
   // Play/Pause/Cue
   const play = async () => {
@@ -450,41 +438,6 @@ export default function Deck({ id, label, accent }) {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Waveform — scrolling with centered playhead */}
-      <div className="relative rounded overflow-hidden border border-white/10"
-           style={{
-             background:
-               // Subtle vertical beat-grid lines + dark gradient
-               "repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 40px), " +
-               "linear-gradient(180deg, #050505 0%, #0b0b0b 50%, #050505 100%)",
-           }}>
-        <div ref={waveRef} data-testid={`deck-${letter}-waveform`} className="h-[80px]" />
-        {/* Centered playhead */}
-        <div className="absolute top-0 bottom-0 left-1/2 pointer-events-none z-10"
-             style={{
-               width: "2px",
-               marginLeft: "-1px",
-               background: accent,
-               boxShadow: `0 0 8px ${accent}, 0 0 2px ${accent}`,
-             }} />
-        {/* Center triangle markers top/bottom */}
-        <div className="absolute top-0 left-1/2 pointer-events-none z-10"
-             style={{
-               marginLeft: "-5px",
-               width: 0, height: 0,
-               borderLeft: "5px solid transparent",
-               borderRight: "5px solid transparent",
-               borderTop: `6px solid ${accent}`,
-             }} />
-        {!deck.track && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="font-mono-dj text-[10px] tracking-[0.3em] uppercase text-white/20">
-              Load a track
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Controls row 1 — Transport | Keylock | Tempo (single compact row, no wrap) */}
