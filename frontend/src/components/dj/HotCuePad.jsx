@@ -6,17 +6,19 @@ const SLOT_COLORS = [
 ];
 
 export default function HotCuePad({ deckId, getCurrentTime, seekTo, deckLetter }) {
-  const deck = useDJStore((s) => s[deckId]);
+  // Only subscribe to hotCues + track presence — not the whole deck object.
+  const hotCues = useDJStore((s) => s[deckId].hotCues);
+  const hasTrack = useDJStore((s) => !!s[deckId].track);
   const setHotCue = useDJStore((s) => s.setHotCue);
   const clearHotCue = useDJStore((s) => s.clearHotCue);
 
   const onSlotClick = (i, e) => {
-    if (!deck.track) return;
+    if (!hasTrack) return;
     if (e.shiftKey) {
       clearHotCue(deckId, i);
       return;
     }
-    const existing = deck.hotCues[i];
+    const existing = hotCues[i];
     if (existing == null) {
       setHotCue(deckId, i, getCurrentTime());
     } else {
@@ -28,10 +30,9 @@ export default function HotCuePad({ deckId, getCurrentTime, seekTo, deckLetter }
     <div className="flex flex-col gap-1" data-testid={`hotcue-pad-${deckLetter}`}>
       <span className="label-tiny truncate" title="Shift+click to clear">Hot Cues</span>
       <div className="grid grid-cols-4 gap-1">
-        {deck.hotCues.map((v, i) => {
+        {hotCues.map((v, i) => {
           const set = v != null;
           const color = SLOT_COLORS[i] || "#FF1F1F";
-          const hasTrack = !!deck.track;
           return (
             <button
               key={i}

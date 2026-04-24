@@ -7,6 +7,7 @@ import HotCuePad from "./HotCuePad";
 import LoopControls from "./LoopControls";
 import FXSlot from "./FXSlot";
 import { useDJStore } from "@/store/djStore";
+import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext } from "@/lib/audioEngine";
 import { readTags } from "@/lib/mediaTags";
 import { toast } from "sonner";
@@ -25,9 +26,26 @@ export default function Deck({ id, label, accent }) {
   const wsRef = useRef(null);
   const chainRef = useRef(null);
   const rafRef = useRef(null);
+  const currentTimeRef = useRef(0);
 
-  const deck = useDJStore((s) => s[id]);
-  const otherDeck = useDJStore((s) => (id === "deckA" ? s.deckB : s.deckA));
+  const deck = useDJStore(useShallow((s) => ({
+    track: s[id].track,
+    playing: s[id].playing,
+    currentTime: s[id].currentTime,
+    duration: s[id].duration,
+    baseBPM: s[id].baseBPM,
+    tempoPct: s[id].tempoPct,
+    tempoRange: s[id].tempoRange,
+    keylock: s[id].keylock,
+    pflOn: s[id].pflOn,
+    cuePoint: s[id].cuePoint,
+    hotCues: s[id].hotCues,
+  })));
+  const otherDeck = useDJStore(useShallow((s) => ({
+    track: id === "deckA" ? s.deckB.track : s.deckA.track,
+    currentBPM: (id === "deckA" ? s.deckB : s.deckA).baseBPM *
+                (1 + (id === "deckA" ? s.deckB : s.deckA).tempoPct / 100),
+  })));
   const setDeck = useDJStore((s) => s.setDeck);
   const setDeckEQ = useDJStore((s) => s.setDeckEQ);
   const setHotCue = useDJStore((s) => s.setHotCue);
@@ -50,16 +68,29 @@ export default function Deck({ id, label, accent }) {
 
     el.addEventListener("ended", () => setDeck(id, { playing: false }));
     el.addEventListener("loadedmetadata", () => setDeck(id, { duration: el.duration || 0 }));
+    // Reduced-rate currentTime updates. Browser's `timeupdate` fires 4-8×/sec
+    // and caused every store-subscribed component to re-render, blocking the
+    // main thread (visible as sticky sliders + audio jitter). Instead we:
+    //  1. Keep a ref of the latest currentTime for in-this-file logic.
+    //  2. Only write the store every 250ms (4 Hz) for the UI clock display.
+    let lastStoreWrite = 0;
     el.addEventListener("timeupdate", () => {
       const t = el.currentTime || 0;
-      // Loop behaviour
+      currentTimeRef.current = t;
+      // Loop behaviour uses the ref so no store access needed
       const s = useDJStore.getState()[id];
       if (s.loop?.enabled && s.loop.in != null && s.loop.out != null && t >= s.loop.out) {
         el.currentTime = s.loop.in;
+        currentTimeRef.current = s.loop.in;
         setDeck(id, { currentTime: s.loop.in });
+        lastStoreWrite = performance.now();
         return;
       }
-      setDeck(id, { currentTime: t });
+      const now = performance.now();
+      if (now - lastStoreWrite > 250) {
+        setDeck(id, { currentTime: t });
+        lastStoreWrite = now;
+      }
     });
 
     return () => { el.pause(); el.src = ""; };
@@ -92,14 +123,9 @@ export default function Deck({ id, label, accent }) {
     return () => { ws.destroy(); wsRef.current = null; };
   }, [accent]);
 
-  // EQ
-  useEffect(() => {
-    const c = chainRef.current; if (!c) return;
-    c.setLow(deck.eq.low); c.setMid(deck.eq.mid); c.setHigh(deck.eq.high);
-  }, [deck.eq.low, deck.eq.mid, deck.eq.high]);
-
-  // Volume
-  useEffect(() => { chainRef.current?.setVolume(deck.volume); }, [deck.volume]);
+  // EQ/Volume/Filter/Trim are wired by Mixer's ChannelStrip (single source of
+  // truth). Removing them from Deck means Deck doesn't re-render on those
+  // changes, which kept slider drags lag-free.
 
   // PFL / headphone cue on this deck
   useEffect(() => { chainRef.current?.setCueActive(!!deck.pflOn); }, [deck.pflOn]);
@@ -227,8 +253,9 @@ export default function Deck({ id, label, accent }) {
   const setCueHere = () => setDeck(id, { cuePoint: audioElRef.current.currentTime });
 
   const sync = () => {
-    if (!otherDeck?.track || !otherDeck.baseBPM || !deck.baseBPM) return;
-    const otherCurrent = otherDeck.baseBPM * (1 + otherDeck.tempoPct / 100);
+    if (!otherDeck?.track || !deck.baseBPM) return;
+    const otherCurrent = otherDeck.currentBPM;
+    if (!otherCurrent) return;
     const desiredPct = (otherCurrent / deck.baseBPM - 1) * 100;
     const clamp = Math.max(-deck.tempoRange, Math.min(deck.tempoRange, desiredPct));
     setDeck(id, { tempoPct: clamp });

@@ -3,20 +3,15 @@ import { useDJStore } from "@/store/djStore";
 import { sendCC, getActiveOutputId } from "@/lib/midi";
 
 /**
- * Sends periodic MIDI CC messages to the active output to rotate the physical
- * controller's jog wheel LED ring in sync with playback.
+ * Sends periodic MIDI CC messages to the active MIDI output to rotate the
+ * physical controller's jog-wheel LED ring in sync with playback.
  *
- * The CC number, channel, and ticks-per-rotation are user-configurable in the
- * MIDI panel (store.midi.ledFeedback). Rate = playback position × ticks ÷ 1.8s
- * (33 1/3 RPM = 1 rotation per 1.8s).
- *
- * Sends at ~30fps only when the deck is playing and feedback is enabled, to
- * avoid flooding the controller.
+ * PERF NOTE: we read live deck state from `useDJStore.getState()` INSIDE the
+ * RAF loop instead of via subscriptions so the effect doesn't tear down and
+ * rebuild on every currentTime update. That was causing audio jitter.
  */
 export default function PlatterLEDFeedback() {
   const midi = useDJStore((s) => s.midi);
-  const deckA = useDJStore((s) => s.deckA);
-  const deckB = useDJStore((s) => s.deckB);
   const rafRef = useRef(null);
   const lastSentRef = useRef({ a: -1, b: -1, ts: 0 });
 
@@ -26,29 +21,27 @@ export default function PlatterLEDFeedback() {
 
     const tick = () => {
       const now = performance.now();
-      const { ticksPerRotation = 36, deckA: cfgA, deckB: cfgB } = midi.ledFeedback;
+      const st = useDJStore.getState();
+      const { ticksPerRotation = 36, deckA: cfgA, deckB: cfgB } = st.midi.ledFeedback;
+      const dA = st.deckA;
+      const dB = st.deckB;
 
       const computeStep = (t) => {
-        // 33 1/3 RPM → 1 rotation per 1.8s
         const SEC_PER_ROT = 1.8;
         const frac = ((t % SEC_PER_ROT) / SEC_PER_ROT);
         return Math.floor(frac * ticksPerRotation) % ticksPerRotation;
       };
 
-      const aStep = deckA.playing ? computeStep(deckA.currentTime || 0) : null;
-      const bStep = deckB.playing ? computeStep(deckB.currentTime || 0) : null;
+      const aStep = dA.playing ? computeStep(dA.currentTime || 0) : null;
+      const bStep = dB.playing ? computeStep(dB.currentTime || 0) : null;
 
-      // Throttle: 30fps max
       if (now - lastSentRef.current.ts > 33) {
         if (aStep !== null && aStep !== lastSentRef.current.a) {
-          // Map step 0..ticksPerRotation-1 → CC value 0..127
-          const val = Math.floor((aStep / ticksPerRotation) * 127);
-          sendCC(cfgA.channel, cfgA.cc, val);
+          sendCC(cfgA.channel, cfgA.cc, Math.floor((aStep / ticksPerRotation) * 127));
           lastSentRef.current.a = aStep;
         }
         if (bStep !== null && bStep !== lastSentRef.current.b) {
-          const val = Math.floor((bStep / ticksPerRotation) * 127);
-          sendCC(cfgB.channel, cfgB.cc, val);
+          sendCC(cfgB.channel, cfgB.cc, Math.floor((bStep / ticksPerRotation) * 127));
           lastSentRef.current.b = bStep;
         }
         lastSentRef.current.ts = now;
@@ -58,7 +51,7 @@ export default function PlatterLEDFeedback() {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [midi.ledFeedback, deckA.playing, deckA.currentTime, deckB.playing, deckB.currentTime]);
+  }, [midi.ledFeedback]);
 
   return null;
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useDJStore } from "@/store/djStore";
 import { FX_TYPES, FX_DIVISIONS } from "@/lib/fxRack";
 import EQKnob from "./EQKnob";
@@ -21,16 +21,27 @@ const EFFECT_COLORS = {
  * subscribe to store and push commands into the node.
  */
 export default function FXSlot({ deckId, slotKey, chain }) {
-  const deck = useDJStore((s) => s[deckId]);
+  // Subscribe only to this slot's state + BPM, not the whole deck
+  const state = useDJStore((s) => s[deckId][slotKey]);
+  const baseBPM = useDJStore((s) => s[deckId].baseBPM);
+  const tempoPct = useDJStore((s) => s[deckId].tempoPct);
   const setFX = useDJStore((s) => s.setFX);
-  const state = deck[slotKey];
-  const node = chain?.[slotKey];
+  // Live chain may be null on first render; subscribe via the chain-ready
+  // event so we get the node as soon as it's created.
+  const [liveChain, setLiveChain] = useState(chain);
+  useEffect(() => {
+    if (chain) setLiveChain(chain);
+    const h = (e) => { if (e.detail.deckId === deckId) setLiveChain(e.detail.chain); };
+    window.addEventListener("dj:chain-ready", h);
+    return () => window.removeEventListener("dj:chain-ready", h);
+  }, [chain, deckId]);
+  const node = liveChain?.[slotKey];
 
   const letter = deckId === "deckA" ? "a" : "b";
   const slotNum = slotKey === "fx1" ? 1 : 2;
   const color = EFFECT_COLORS[state.effect] || "#FF1F1F";
 
-  const currentBPM = deck.baseBPM * (1 + deck.tempoPct / 100);
+  const currentBPM = baseBPM * (1 + tempoPct / 100);
 
   // Sync store → audio node
   useEffect(() => { node?.setEffect?.(state.effect); }, [node, state.effect]);

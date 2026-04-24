@@ -40,15 +40,49 @@ function ChannelVU({ analyser, tall = false }) {
   );
 }
 
-// Channel strip: Gain → EQ(HIGH/MID/LOW) → Filter → Tempo (vert) → VU + Volume fader
+// Channel strip: Gain → EQ(HIGH/MID/LOW) → Filter → Tempo fader (volume lives in its own row above the crossfader)
 function ChannelStrip({ deckId, deckLabel, chain }) {
-  const deck = useDJStore((s) => s[deckId]);
+  // Subscribe ONLY to the specific fields this strip uses so dragging a fader
+  // elsewhere doesn't re-render this whole knob stack. Tempo + Volume are
+  // extracted into their own child components (TempoFader / VolumeFader) so
+  // dragging those doesn't cascade re-renders through the knobs.
+  const trim = useDJStore((s) => s[deckId].trim);
+  const filter = useDJStore((s) => s[deckId].filter);
+  const eqLow = useDJStore((s) => s[deckId].eq.low);
+  const eqMid = useDJStore((s) => s[deckId].eq.mid);
+  const eqHigh = useDJStore((s) => s[deckId].eq.high);
   const setDeck = useDJStore((s) => s.setDeck);
   const setDeckEQ = useDJStore((s) => s.setDeckEQ);
   const letter = deckId === "deckA" ? "a" : "b";
 
-  useEffect(() => { chain?.setTrim?.(deck.trim); }, [chain, deck.trim]);
-  useEffect(() => { chain?.setFilter?.(deck.filter); }, [chain, deck.filter]);
+  // Prefer the module-level registry — prop may be null due to React effect
+  // ordering (child effects run before parent). This was why Gain/Filter were
+  // visually moving but not audibly doing anything.
+  const liveChain = chain || getDeckChain(deckId);
+
+  useEffect(() => { liveChain?.setTrim?.(trim); }, [liveChain, trim]);
+  useEffect(() => { liveChain?.setFilter?.(filter); }, [liveChain, filter]);
+  useEffect(() => { liveChain?.setLow?.(eqLow); }, [liveChain, eqLow]);
+  useEffect(() => { liveChain?.setMid?.(eqMid); }, [liveChain, eqMid]);
+  useEffect(() => { liveChain?.setHigh?.(eqHigh); }, [liveChain, eqHigh]);
+  // Volume wiring is owned by VolumeFader to avoid duplicate subscription.
+  // Also re-apply on chain-ready so late-registering chains pick up current store values
+  useEffect(() => {
+    const apply = () => {
+      const ch = getDeckChain(deckId);
+      if (!ch) return;
+      const s = useDJStore.getState()[deckId];
+      ch.setTrim?.(s.trim);
+      ch.setFilter?.(s.filter);
+      ch.setLow?.(s.eq.low);
+      ch.setMid?.(s.eq.mid);
+      ch.setHigh?.(s.eq.high);
+      ch.setVolume?.(s.volume);
+    };
+    window.addEventListener("dj:chain-ready", apply);
+    apply();
+    return () => window.removeEventListener("dj:chain-ready", apply);
+  }, [deckId]);
 
   return (
     <div className="flex flex-col items-center gap-1 px-1.5" data-testid={`channel-strip-${letter}`}>
@@ -58,53 +92,65 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
       <div className="flex gap-1.5 items-start">
         {/* Knob column */}
         <div className="flex flex-col items-center gap-1">
-          <EQKnob label="GAIN" value={deck.trim} min={-12} max={12}
+          <EQKnob label="GAIN" value={trim} min={-12} max={12}
             onChange={(v) => setDeck(deckId, { trim: v })}
             testid={`channel-${letter}-trim`} />
-          <EQKnob label="HIGH" value={deck.eq.high} onChange={(v) => setDeckEQ(deckId, "high", v)} testid={`channel-${letter}-eq-high`} />
-          <EQKnob label="MID"  value={deck.eq.mid}  onChange={(v) => setDeckEQ(deckId, "mid",  v)} testid={`channel-${letter}-eq-mid`} />
-          <EQKnob label="LOW"  value={deck.eq.low}  onChange={(v) => setDeckEQ(deckId, "low",  v)} testid={`channel-${letter}-eq-low`} />
-          <EQKnob label="FILTER" value={deck.filter} min={-1} max={1}
+          <EQKnob label="HIGH" value={eqHigh} onChange={(v) => setDeckEQ(deckId, "high", v)} testid={`channel-${letter}-eq-high`} />
+          <EQKnob label="MID"  value={eqMid}  onChange={(v) => setDeckEQ(deckId, "mid",  v)} testid={`channel-${letter}-eq-mid`} />
+          <EQKnob label="LOW"  value={eqLow}  onChange={(v) => setDeckEQ(deckId, "low",  v)} testid={`channel-${letter}-eq-low`} />
+          <EQKnob label="FILTER" value={filter} min={-1} max={1}
             onChange={(v) => setDeck(deckId, { filter: v })}
             testid={`channel-${letter}-filter`}
             color="#FF9500"
           />
         </div>
 
-        {/* Tempo / Pitch fader column */}
-        <div className="flex flex-col items-center gap-1 pt-2">
-          <span className="label-tiny">TEMPO</span>
-          <span className="font-mono-dj text-[9px] text-[#A1A1AA]" data-testid={`channel-${letter}-tempo-readout`}>
-            {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
-          </span>
-          <input
-            type="range"
-            min={-deck.tempoRange} max={deck.tempoRange} step={0.1}
-            value={deck.tempoPct}
-            onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
-            onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
-            className="fader-vert"
-            style={{ height: 160 }}
-            data-testid={`channel-${letter}-tempo`}
-            title="Double-click to reset"
-          />
-          <span className="label-tiny">±{deck.tempoRange}%</span>
-        </div>
+        {/* Tempo / Pitch fader — its own component so changes don't re-render the whole strip */}
+        <TempoFader deckId={deckId} letter={letter} />
       </div>
     </div>
   );
 }
 
-// Compact volume fader + VU for the crossfader row
+function TempoFader({ deckId, letter }) {
+  const tempoPct = useDJStore((s) => s[deckId].tempoPct);
+  const tempoRange = useDJStore((s) => s[deckId].tempoRange);
+  const setDeck = useDJStore((s) => s.setDeck);
+  return (
+    <div className="flex flex-col items-center gap-1 pt-2">
+      <span className="label-tiny">TEMPO</span>
+      <span className="font-mono-dj text-[9px] text-[#A1A1AA]" data-testid={`channel-${letter}-tempo-readout`}>
+        {tempoPct > 0 ? "+" : ""}{tempoPct.toFixed(1)}%
+      </span>
+      <input
+        type="range"
+        min={-tempoRange} max={tempoRange} step={0.1}
+        value={tempoPct}
+        onChange={(e) => setDeck(deckId, { tempoPct: +e.target.value })}
+        onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
+        className="fader-vert"
+        style={{ height: 160 }}
+        data-testid={`channel-${letter}-tempo`}
+        title="Double-click to reset"
+      />
+      <span className="label-tiny">±{tempoRange}%</span>
+    </div>
+  );
+}
+
+// Compact volume fader + VU for the crossfader row. Owns the audio-engine
+// volume wiring so ChannelStrip doesn't re-render on volume drags.
 function VolumeFader({ deckId, chain }) {
-  const deck = useDJStore((s) => s[deckId]);
+  const volume = useDJStore((s) => s[deckId].volume);
   const setDeck = useDJStore((s) => s.setDeck);
   const letter = deckId === "deckA" ? "a" : "b";
+  const liveChain = chain || getDeckChain(deckId);
+  useEffect(() => { liveChain?.setVolume?.(volume); }, [liveChain, volume]);
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="label-tiny">VOL {letter.toUpperCase()}</span>
       <div className="flex items-end gap-1">
-        <input type="range" min={0} max={1} step={0.01} value={deck.volume}
+        <input type="range" min={0} max={1} step={0.01} value={volume}
           onChange={(e) => setDeck(deckId, { volume: +e.target.value })}
           className="fader-vert" style={{ height: 110 }}
           data-testid={`channel-${letter}-volume`} />

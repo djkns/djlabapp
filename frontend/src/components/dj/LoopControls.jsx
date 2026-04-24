@@ -1,31 +1,37 @@
 import { useDJStore } from "@/store/djStore";
+import { useShallow } from "zustand/react/shallow";
 import { Repeat, X } from "lucide-react";
 
 const BEAT_OPTIONS = [1, 2, 4, 8, 16];
 
 export default function LoopControls({ deckId, getCurrentTime, seekTo, deckLetter }) {
-  const deck = useDJStore((s) => s[deckId]);
+  // Only subscribe to the specific fields used here.
+  const { baseBPM, tempoPct, loop, hasTrack } = useDJStore(useShallow((s) => ({
+    baseBPM: s[deckId].baseBPM,
+    tempoPct: s[deckId].tempoPct,
+    loop: s[deckId].loop,
+    hasTrack: !!s[deckId].track,
+  })));
   const setLoop = useDJStore((s) => s.setLoop);
   const clearLoop = useDJStore((s) => s.clearLoop);
 
-  const currentBPM = deck.baseBPM * (1 + deck.tempoPct / 100);
+  const currentBPM = baseBPM * (1 + tempoPct / 100);
   const secPerBeat = 60 / (currentBPM || 120);
 
-  const hasTrack = !!deck.track;
-  const hasIn = deck.loop.in != null;
-  const hasOut = deck.loop.out != null;
+  const hasIn = loop.in != null;
+  const hasOut = loop.out != null;
   const hasLoop = hasIn && hasOut;
 
   const setIn = () => setLoop(deckId, { in: getCurrentTime(), enabled: false, beats: null });
   const setOut = () => {
     const now = getCurrentTime();
-    if (!hasIn || now <= deck.loop.in) return;
+    if (!hasIn || now <= loop.in) return;
     setLoop(deckId, { out: now, enabled: true });
   };
   const toggleEnabled = () => {
     if (hasLoop) {
-      setLoop(deckId, { enabled: !deck.loop.enabled });
-      if (!deck.loop.enabled) seekTo(deck.loop.in);
+      setLoop(deckId, { enabled: !loop.enabled });
+      if (!loop.enabled) seekTo(loop.in);
     }
   };
   const autoLoop = (beats) => {
@@ -61,7 +67,7 @@ export default function LoopControls({ deckId, getCurrentTime, seekTo, deckLette
           disabled={!hasTrack}
           data-testid={`deck-${deckLetter}-loop-in`}
           className={`${baseBtn} ${!hasTrack ? idleBtn : (hasIn ? activeBtn : armedBtn)}`}
-          title={hasIn ? `IN @ ${deck.loop.in.toFixed(2)}s` : "Set loop IN at current position"}
+          title={hasIn ? `IN @ ${loop.in.toFixed(2)}s` : "Set loop IN at current position"}
         >
           In
         </button>
@@ -70,7 +76,7 @@ export default function LoopControls({ deckId, getCurrentTime, seekTo, deckLette
           disabled={!hasTrack || !hasIn}
           data-testid={`deck-${deckLetter}-loop-out`}
           className={`${baseBtn} ${(!hasTrack || !hasIn) ? idleBtn : (hasOut ? activeBtn : armedBtn)}`}
-          title={hasOut ? `OUT @ ${deck.loop.out.toFixed(2)}s` : (hasIn ? "Set loop OUT" : "Set loop IN first")}
+          title={hasOut ? `OUT @ ${loop.out.toFixed(2)}s` : (hasIn ? "Set loop OUT" : "Set loop IN first")}
         >
           Out
         </button>
@@ -81,11 +87,11 @@ export default function LoopControls({ deckId, getCurrentTime, seekTo, deckLette
           className={`w-8 h-7 rounded-sm border-2 flex items-center justify-center transition ${
             !hasLoop
               ? "border-white/10 text-[#52525B] cursor-not-allowed"
-              : deck.loop.enabled
+              : loop.enabled
                 ? "bg-[#D10A0A] border-[#FF1F1F] text-white shadow-[0_0_12px_#FF1F1F]"
                 : "border-white/30 text-white hover:border-[#FF1F1F] hover:text-[#FF1F1F]"
           }`}
-          title={deck.loop.enabled ? "Disable loop" : "Enable loop"}
+          title={loop.enabled ? "Disable loop" : "Enable loop"}
         >
           <Repeat className="w-3 h-3" />
         </button>
@@ -100,7 +106,7 @@ export default function LoopControls({ deckId, getCurrentTime, seekTo, deckLette
             className={`flex-1 h-6 rounded-sm text-[10px] font-bold tracking-wider border-2 transition ${
               !hasTrack
                 ? idleBtn
-                : deck.loop.beats === b && deck.loop.enabled
+                : loop.beats === b && loop.enabled
                   ? "border-[#FF1F1F] text-[#FF1F1F] bg-[#D10A0A]/25 shadow-[0_0_10px_#FF1F1F55]"
                   : "border-white/25 text-white bg-white/[0.03] hover:border-[#FF1F1F] hover:text-[#FF1F1F] hover:bg-[#D10A0A]/10"
             }`}

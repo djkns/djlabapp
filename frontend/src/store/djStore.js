@@ -1,5 +1,31 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
+
+/**
+ * Throttled localStorage — only writes at most once per 400ms.
+ * Dragging a fader fires 60+ setState calls per second; writing the whole
+ * store JSON to localStorage on each one introduces audible audio jitter
+ * because setItem blocks the main thread for a few ms.
+ */
+const throttledLocalStorage = (() => {
+  let pending = null;
+  let pendingKey = null;
+  let timer = null;
+  const flush = () => {
+    if (pendingKey !== null) {
+      try { window.localStorage.setItem(pendingKey, pending); } catch { /* quota */ }
+    }
+    pendingKey = null; pending = null; timer = null;
+  };
+  return {
+    getItem: (k) => window.localStorage.getItem(k),
+    setItem: (k, v) => {
+      pendingKey = k; pending = v;
+      if (!timer) timer = setTimeout(flush, 400);
+    },
+    removeItem: (k) => window.localStorage.removeItem(k),
+  };
+})();
 
 const HOT_CUE_COUNT = 8;
 const emptyHotCues = () => Array.from({ length: HOT_CUE_COUNT }, () => null);
@@ -133,6 +159,7 @@ export const useDJStore = create(
     }),
     {
       name: "djlab-store-v2",
+      storage: createJSONStorage(() => throttledLocalStorage),
       partialize: (s) => ({
         // Only persist user preferences; NOT live state (track, playing, currentTime)
         hp: s.hp,
