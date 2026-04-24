@@ -375,11 +375,13 @@ async def stream_ws(ws: WebSocket):
     stream_id = str(uuid.uuid4())
 
     # ffmpeg reads WebM/Opus from stdin, re-encodes to MP3, pushes to Icecast.
+    # NOTE: no `-re` flag — browser MediaRecorder already delivers at real-time,
+    # and `-re` causes ffmpeg to throttle its own pipe reads which can starve
+    # the encoder.
     ffmpeg_cmd = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel", "info",
-        "-re",
         "-f", "webm",
         "-i", "pipe:0",
         "-c:a", "libmp3lame",
@@ -391,7 +393,6 @@ async def stream_ws(ws: WebSocket):
         "-ice_name", station_name,
         "-ice_genre", genre,
         "-ice_description", description,
-        "-user_agent", "DJ Lab / NU Vibe",
     ]
     # Liquidsoap / Shoutcast source harbor uses the legacy ICY protocol, not
     # the modern Icecast 2 HTTP PUT. AzuraCast routes DJ connections through
