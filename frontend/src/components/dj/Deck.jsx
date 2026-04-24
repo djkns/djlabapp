@@ -273,27 +273,34 @@ export default function Deck({ id, label, accent }) {
 
   const toggleTempoRange = () => setDeck(id, { tempoRange: deck.tempoRange === 8 ? 16 : 8 });
 
-  // Beat flash from analyser
+  // Beat flash from analyser. Read `playing` fresh from the store each frame
+  // so the flash only fires when the deck is actually playing — not when the
+  // analyser picks up ambient noise from other decks passing through the
+  // shared master bus, and not from a stale closure after pause.
   useEffect(() => {
     const c = chainRef.current; if (!c) return;
     const analyser = c.analyser;
     const buf = new Uint8Array(analyser.frequencyBinCount);
     let lastFlash = 0;
     const loop = () => {
-      analyser.getByteTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-      const rms = Math.sqrt(sum / buf.length);
-      const now = performance.now();
-      if (deck.playing && rms > 0.18 && now - lastFlash > 180) {
-        setBeatFlash(true); lastFlash = now;
-        setTimeout(() => setBeatFlash(false), 90);
+      const s = useDJStore.getState()[id];
+      if (s.playing) {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        const rms = Math.sqrt(sum / buf.length);
+        const now = performance.now();
+        if (rms > 0.18 && now - lastFlash > 180) {
+          setBeatFlash(true); lastFlash = now;
+          setTimeout(() => setBeatFlash(false), 90);
+        }
       }
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [deck.playing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // MIDI / keyboard actions
   useEffect(() => {
