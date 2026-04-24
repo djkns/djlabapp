@@ -1,33 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Rotary EQ knob. -12dB .. +12dB, 0 center.
- * Drag vertically to turn. Double-click to reset.
+ * Rotary EQ knob. Fully controlled — `value` prop drives visuals, mousemove
+ * calls `onChange` directly. No local state, no rAF, no onChange-ref: the
+ * simplest pattern that holds up under rapid dragging without fighting
+ * React's render cycle.
+ *
+ * Drag vertically to turn. Double-click to reset to 0.
  */
 export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#D10A0A", size = 48 }) {
   const ref = useRef(null);
   const [dragging, setDragging] = useState(false);
-  const [localValue, setLocalValue] = useState(value);
   const startRef = useRef({ y: 0, v: 0 });
-  // Keep an always-fresh ref to onChange so the mousemove listener can be
-  // attached ONCE per drag session. If we put `onChange` in the effect deps,
-  // the parent's inline lambda identity changes on every render → effect
-  // tears down + re-attaches → mousemove events fired between tear-down and
-  // re-attach get dropped → knob "bounces".
-  const onChangeRef = useRef(onChange);
-  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
-  // Sync external (MIDI / store) value changes — but NOT while the user is
-  // actively dragging, otherwise we'd overwrite the user's own drag updates
-  // and the knob would "bounce" as it fights React's re-render cycle.
-  useEffect(() => {
-    if (!dragging) setLocalValue(value);
-  }, [value, dragging]);
-
-  const display = dragging ? localValue : value;
   const range = max - min;
   // map value -> angle -135..+135
-  const angle = ((display - min) / range) * 270 - 135;
+  const angle = ((value - min) / range) * 270 - 135;
 
   useEffect(() => {
     if (!dragging) return;
@@ -35,8 +23,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
       const dy = startRef.current.y - y; // drag up = increase
       const next = Math.max(min, Math.min(max, startRef.current.v + dy * (range / 140)));
-      setLocalValue(next);
-      onChangeRef.current?.(next);
+      onChange?.(next);
     };
     const onUp = () => setDragging(false);
     window.addEventListener("mousemove", onMove);
@@ -49,17 +36,16 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
     };
-  }, [dragging, min, max, range]);
+  }, [dragging, min, max, onChange, range]);
 
   const startDrag = (e) => {
     const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
     startRef.current = { y, v: value };
-    setLocalValue(value);
     setDragging(true);
     e.preventDefault();
   };
 
-  const active = Math.abs(display) > 0.2;
+  const active = Math.abs(value) > 0.2;
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -68,7 +54,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
         data-testid={testid}
         onMouseDown={startDrag}
         onTouchStart={startDrag}
-        onDoubleClick={() => { setLocalValue(0); onChange?.(0); }}
+        onDoubleClick={() => onChange?.(0)}
         className="relative rounded-full cursor-pointer select-none transition-shadow"
         style={{
           width: size, height: size,

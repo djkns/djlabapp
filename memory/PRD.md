@@ -49,6 +49,7 @@ Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Desig
 - [x] **Vertical fader modern-Chrome compatibility (FIXED 2026-02-23)**
 
 ## Fixed During This Session
+- **2026-02-24 — Knob / fader bouncing (P0).** Reverted `EQKnob.jsx` and `SmoothSlider.jsx` to the simple fully-controlled `value` + `onChange` pattern. The previous hybrid (rAF throttling + `localValue` + `onChangeRef` for knobs; `defaultValue` + `useEffect` imperative-sync for sliders) was fighting React's render cycle and causing visible thumb bounce. Verified in-browser: MID EQ knob rotates smoothly, VOL A fader tracks from 0.8→1.0 without snap-back, crossfader reaches 0.72 from center without bounce.
 - **2026-02-23 — Vertical fader rendering in Chrome 124+.** Chrome 124+ removed `-webkit-appearance: slider-vertical`. Replaced with W3C standard `writing-mode: vertical-lr; direction: rtl; appearance: auto`. Verified click/drag working top→bottom.
 - **2026-02-23 — Badge clearance.** Added `pb-24` bottom padding on main + `pb-20` on mixer scroll area; moved "Part of the NU Vibe Network" footer to bottom-left so it doesn't collide with Emergent preview badge.
 - **2026-02-23 — Deck re-compacted.** Deck height reduced from 516px → 349px (~32% shorter). Changes:
