@@ -1,5 +1,6 @@
 // DJ Lab audio engine — shared AudioContext with two deck chains,
 // a master bus, a headphone/cue bus, and a master MediaRecorder.
+import { createFXSlot } from "./fxRack";
 //
 // Deck chain:
 //   MediaElementSource -> LowShelf -> Peaking(mid) -> HighShelf -> volume
@@ -113,6 +114,10 @@ export function createDeckChain(audioEl) {
   const preFader = ctx.createGain();
   preFader.gain.value = 1.0;
 
+  // FX slots (inserted in series after preFader, before cue/volume)
+  const fx1 = createFXSlot(ctx);
+  const fx2 = createFXSlot(ctx);
+
   const cueSend = ctx.createGain();
   cueSend.gain.value = 0;
 
@@ -125,24 +130,27 @@ export function createDeckChain(audioEl) {
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
 
-  // source -> trim -> EQ -> colorFilter -> preFader -> [cue / volume]
+  // source -> trim -> EQ -> colorFilter -> preFader -> fx1 -> fx2 -> [cue / volume]
   source.connect(trim);
   trim.connect(low);
   low.connect(mid);
   mid.connect(high);
   high.connect(colorFilter);
   colorFilter.connect(preFader);
+  preFader.connect(fx1.input);
+  fx1.output.connect(fx2.input);
 
-  preFader.connect(cueSend);
+  fx2.output.connect(cueSend);
   cueSend.connect(cueBus);
 
-  preFader.connect(volume);
+  fx2.output.connect(volume);
   volume.connect(analyser);
   volume.connect(crossfade);
   crossfade.connect(masterGain);
 
   return {
     ctx, source, trim, low, mid, high, colorFilter, preFader, cueSend, volume, crossfade, analyser,
+    fx1, fx2,
     setTrim: (db) => { trim.gain.value = Math.pow(10, db / 20); },
     setLow:  (db) => { low.gain.value  = db; },
     setMid:  (db) => { mid.gain.value  = db; },

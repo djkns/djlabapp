@@ -5,6 +5,7 @@ import SpinningVinyl from "./SpinningVinyl";
 import EQKnob from "./EQKnob";
 import HotCuePad from "./HotCuePad";
 import LoopControls from "./LoopControls";
+import FXSlot from "./FXSlot";
 import { useDJStore } from "@/store/djStore";
 import { createDeckChain, registerDeckChain, resumeAudioContext } from "@/lib/audioEngine";
 import { readTags } from "@/lib/mediaTags";
@@ -282,6 +283,20 @@ export default function Deck({ id, label, accent }) {
       else if (sub === "tempo")   setDeck(id, { tempoPct: Math.max(-deck.tempoRange, Math.min(deck.tempoRange, value * deck.tempoRange)) });
       else if (sub === "trim")    setDeck(id, { trim: Math.max(-12, Math.min(12, value)) });
       else if (sub === "filter")  setDeck(id, { filter: Math.max(-1, Math.min(1, value)) });
+      else if (sub === "fx1.enabled") useDJStore.getState().setFX(id, "fx1", { enabled: !deck.fx1.enabled });
+      else if (sub === "fx2.enabled") useDJStore.getState().setFX(id, "fx2", { enabled: !deck.fx2.enabled });
+      else if (sub === "fx1.amount")  useDJStore.getState().setFX(id, "fx1", { amount: Math.max(0, Math.min(1, value)) });
+      else if (sub === "fx2.amount")  useDJStore.getState().setFX(id, "fx2", { amount: Math.max(0, Math.min(1, value)) });
+      else if (sub === "fx1.next") {
+        const cur = ["reverb", "delay", "flanger"].indexOf(deck.fx1.effect);
+        const next = ["reverb", "delay", "flanger"][(cur + 1) % 3];
+        useDJStore.getState().setFX(id, "fx1", { effect: next });
+      }
+      else if (sub === "fx2.next") {
+        const cur = ["reverb", "delay", "flanger"].indexOf(deck.fx2.effect);
+        const next = ["reverb", "delay", "flanger"][(cur + 1) % 3];
+        useDJStore.getState().setFX(id, "fx2", { effect: next });
+      }
       else if (sub === "eq.low")  setDeckEQ(id, "low", value);
       else if (sub === "eq.mid")  setDeckEQ(id, "mid", value);
       else if (sub === "eq.high") setDeckEQ(id, "high", value);
@@ -507,10 +522,14 @@ export default function Deck({ id, label, accent }) {
         </label>
       </div>
 
-      {/* Controls row 2 — Hot cues + Loop (always 2 cols) */}
-      <div className="grid grid-cols-2 gap-2">
+      {/* Controls row 2 — Hot cues + Loop + FX slots */}
+      <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
         <HotCuePad deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
         <LoopControls deckId={id} deckLetter={letter} getCurrentTime={getCurrentTime} seekTo={seekTo} />
+        <div className="flex gap-1.5" data-testid={`deck-${letter}-fx-rack`}>
+          <FXSlot deckId={id} slotKey="fx1" chain={chainRef.current} />
+          <FXSlot deckId={id} slotKey="fx2" chain={chainRef.current} />
+        </div>
       </div>
     </div>
   );

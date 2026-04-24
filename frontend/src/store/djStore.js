@@ -22,6 +22,9 @@ const defaultDeck = () => ({
   hotCues: emptyHotCues(),
   loop: { in: null, out: null, enabled: false, beats: null },
   pflOn: false,
+  // Per-deck FX slots
+  fx1: { effect: "reverb", enabled: false, amount: 0.5, division: "1/4" },
+  fx2: { effect: "delay",  enabled: false, amount: 0.5, division: "1/4" },
 });
 
 export const useDJStore = create(
@@ -86,6 +89,11 @@ export const useDJStore = create(
       // Loops
       setLoop: (id, patch) => set((s) => ({ [id]: { ...s[id], loop: { ...s[id].loop, ...patch } } })),
       clearLoop: (id) => set((s) => ({ [id]: { ...s[id], loop: { in: null, out: null, enabled: false, beats: null } } })),
+
+      // FX — slot is "fx1" or "fx2"
+      setFX: (id, slot, patch) => set((s) => ({
+        [id]: { ...s[id], [slot]: { ...s[id][slot], ...patch } },
+      })),
 
       // Headphones
       setHp: (patch) => set((s) => ({ hp: { ...s.hp, ...patch } })),

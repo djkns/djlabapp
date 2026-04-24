@@ -11,6 +11,8 @@ const isButtonControl = (ctrl) =>
   ctrl.endsWith(".cue") ||
   ctrl.endsWith(".sync") ||
   ctrl.endsWith(".pfl") ||
+  ctrl.endsWith(".enabled") ||
+  ctrl.endsWith(".next") ||
   ctrl.includes(".hotcue.") ||
   ctrl === "master.record" ||
   ctrl === "mic.enabled";

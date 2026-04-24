@@ -51,6 +51,30 @@ export const MIDI_GROUPS = [
     controls: [1,2,3,4,5,6,7,8].map(i => ({ id: `deckB.hotcue.${i}`, label: `Deck B · Hot Cue ${i}`, kind: "button" })),
   },
   {
+    key: "fxA",
+    label: "FX · Deck A",
+    controls: [
+      { id: "deckA.fx1.enabled", label: "Deck A · FX1 Toggle",     kind: "button" },
+      { id: "deckA.fx1.amount",  label: "Deck A · FX1 Amount",     kind: "unipolar" },
+      { id: "deckA.fx1.next",    label: "Deck A · FX1 Next Effect",kind: "button" },
+      { id: "deckA.fx2.enabled", label: "Deck A · FX2 Toggle",     kind: "button" },
+      { id: "deckA.fx2.amount",  label: "Deck A · FX2 Amount",     kind: "unipolar" },
+      { id: "deckA.fx2.next",    label: "Deck A · FX2 Next Effect",kind: "button" },
+    ],
+  },
+  {
+    key: "fxB",
+    label: "FX · Deck B",
+    controls: [
+      { id: "deckB.fx1.enabled", label: "Deck B · FX1 Toggle",     kind: "button" },
+      { id: "deckB.fx1.amount",  label: "Deck B · FX1 Amount",     kind: "unipolar" },
+      { id: "deckB.fx1.next",    label: "Deck B · FX1 Next Effect",kind: "button" },
+      { id: "deckB.fx2.enabled", label: "Deck B · FX2 Toggle",     kind: "button" },
+      { id: "deckB.fx2.amount",  label: "Deck B · FX2 Amount",     kind: "unipolar" },
+      { id: "deckB.fx2.next",    label: "Deck B · FX2 Next Effect",kind: "button" },
+    ],
+  },
+  {
     key: "mixer",
     label: "Mixer / Crossfader",
     controls: [
