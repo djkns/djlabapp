@@ -7,10 +7,11 @@ const STORAGE_KEY = "djlab.streamConfig";
 const DEFAULT_CFG = {
   host: "djsandmc.media",
   port: 8005,
-  mount: "/radio",
+  mount: "/",
   user: "source",
   password: "",
   bitrate: 128,
+  protocol: "shoutcast",  // AzuraCast/Liquidsoap harbor uses ICY
   stationName: "DJ Lab · NU Vibe",
   genre: "Electronic",
   description: "Live mix via DJ Lab",
@@ -133,6 +134,14 @@ export default function StreamConfigDialog({ open, onClose }) {
               <option value={192}>192 kbps</option>
               <option value={256}>256 kbps</option>
               <option value={320}>320 kbps</option>
+            </select>
+          </Field>
+          <Field label="Protocol">
+            <select value={cfg.protocol || "shoutcast"}
+              onChange={(e) => save({ protocol: e.target.value })}
+              data-testid="stream-protocol">
+              <option value="shoutcast">Shoutcast / ICY (AzuraCast default)</option>
+              <option value="icecast">Icecast 2 (HTTP PUT)</option>
             </select>
           </Field>
           <Field label="Station name">

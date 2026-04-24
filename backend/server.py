@@ -351,6 +351,7 @@ async def stream_ws(ws: WebSocket):
     user = q.get("user", "source")
     password = q.get("password")
     bitrate = q.get("bitrate", "128")
+    protocol = q.get("protocol", "icecast")  # 'icecast' or 'shoutcast'
     station_name = q.get("station_name", "DJ Lab · NU Vibe")
     genre = q.get("genre", "Electronic")
     description = q.get("description", "Live mix via DJ Lab")
@@ -380,8 +381,13 @@ async def stream_ws(ws: WebSocket):
         "-ice_genre", genre,
         "-ice_description", description,
         "-user_agent", "DJ Lab / NU Vibe",
-        url,
     ]
+    # Liquidsoap / Shoutcast source harbor uses the legacy ICY protocol, not
+    # the modern Icecast 2 HTTP PUT. AzuraCast routes DJ connections through
+    # a Liquidsoap harbor on a separate port.
+    if protocol == "shoutcast":
+        ffmpeg_cmd += ["-legacy_icecast", "1"]
+    ffmpeg_cmd.append(url)
 
     try:
         proc = await asyncio.to_thread(

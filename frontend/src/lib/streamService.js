@@ -44,10 +44,11 @@ export async function startStream(cfg) {
   const qs = new URLSearchParams({
     host: cfg.host,
     port: String(cfg.port || 8000),
-    mount: cfg.mount || "/live.mp3",
+    mount: cfg.mount || "/",
     user: cfg.user || "source",
     password: cfg.password || "",
     bitrate: String(cfg.bitrate || 128),
+    protocol: cfg.protocol || "shoutcast",
     station_name: cfg.stationName || "DJ Lab · NU Vibe",
     genre: cfg.genre || "Electronic",
     description: cfg.description || "Live mix via DJ Lab",
