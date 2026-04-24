@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import WaveSurfer from "wavesurfer.js";
-import { Play, Pause, SkipBack, Upload, Headphones } from "lucide-react";
+import { Play, Pause, SkipBack, Upload, Headphones, Activity } from "lucide-react";
 import SpinningVinyl from "./SpinningVinyl";
 import EQKnob from "./EQKnob";
 import HotCuePad from "./HotCuePad";
@@ -8,8 +8,9 @@ import LoopControls from "./LoopControls";
 import FXSlot from "./FXSlot";
 import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
-import { createDeckChain, registerDeckChain, resumeAudioContext } from "@/lib/audioEngine";
+import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
 import { readTags } from "@/lib/mediaTags";
+import { analyze as analyzeBPM } from "web-audio-beat-detector";
 import { toast } from "sonner";
 
 const formatTime = (s) => {
@@ -52,6 +53,7 @@ export default function Deck({ id, label, accent }) {
   const setPfl = useDJStore((s) => s.setPfl);
 
   const [beatFlash, setBeatFlash] = useState(false);
+  const [analyzingBPM, setAnalyzingBPM] = useState(false);
 
   // Audio element + chain
   useEffect(() => {
@@ -207,6 +209,33 @@ export default function Deck({ id, label, accent }) {
       el.load();
       if (wsRef.current) { await wsRef.current.load(playUrl).catch(() => {}); }
       setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
+
+      // Auto-detect BPM in the background — never blocks playback. Decodes
+      // the loaded URL into an AudioBuffer and runs `web-audio-beat-detector`'s
+      // tempo analysis. Updates `baseBPM` in the store on completion.
+      (async () => {
+        try {
+          setAnalyzingBPM(true);
+          const trackKey = track.key;
+          const resp = await fetch(playUrl);
+          if (!resp.ok) throw new Error(`fetch ${resp.status}`);
+          const arr = await resp.arrayBuffer();
+          const ac = getAudioContext().ctx;
+          const buf = await ac.decodeAudioData(arr.slice(0));
+          const bpm = await analyzeBPM(buf);
+          // If the user already swapped tracks while we were analyzing, drop result
+          const cur = useDJStore.getState()[id].track;
+          if (cur?.key !== trackKey) return;
+          if (bpm && isFinite(bpm) && bpm >= 60 && bpm <= 200) {
+            setDeck(id, { baseBPM: Math.round(bpm * 10) / 10 });
+          }
+        } catch (err) {
+          // Silent — keep the metadata/manual BPM
+          console.warn("[bpm] detection failed", err);
+        } finally {
+          setAnalyzingBPM(false);
+        }
+      })();
     } catch (err) {
       console.error("load error", err);
       setDeck(id, { loading: false });
@@ -453,6 +482,10 @@ export default function Deck({ id, label, accent }) {
               <div className="font-mono-dj font-bold text-base leading-none" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
                 {currentBPM}
               </div>
+              {analyzingBPM && (
+                <Activity className="w-3 h-3 text-[#FF9500] animate-pulse" data-testid={`deck-${letter}-bpm-analyzing`}
+                          aria-label="Analyzing BPM" />
+              )}
               <input
                 type="number" value={deck.baseBPM}
                 onChange={(e) => setDeck(id, { baseBPM: Math.max(40, Math.min(220, +e.target.value || 120)) })}
