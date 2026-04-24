@@ -86,22 +86,10 @@ export async function resumeAudioContext() {
   return ctx;
 }
 
-/**
- * Build a deck signal chain with a *bufferInput* GainNode at the head.
- * AudioBufferSourceNodes created by createBufferPlayer connect to
- * `chain.bufferInput` fresh on each play/seek.
- *
- * The audioEl parameter is optional and no longer used for audio routing —
- * it's accepted for backward compatibility so callers that still pass an
- * HTMLAudioElement don't break. Audio comes exclusively from the buffer
- * source, so there's no decoder jitter when tempo changes.
- */
-export function createDeckChain(_audioEl) {
+export function createDeckChain(audioEl) {
   const { ctx, masterGain, cueBus } = getAudioContext();
 
-  // bufferInput is where every fresh AudioBufferSourceNode connects.
-  const bufferInput = ctx.createGain();
-  bufferInput.gain.value = 1.0;
+  const source = ctx.createMediaElementSource(audioEl);
 
   // Trim / Gain (±12dB pre-EQ)
   const trim = ctx.createGain();
@@ -142,8 +130,8 @@ export function createDeckChain(_audioEl) {
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
 
-  // bufferInput -> trim -> EQ -> colorFilter -> preFader -> fx1 -> fx2 -> [cue / volume]
-  bufferInput.connect(trim);
+  // source -> trim -> EQ -> colorFilter -> preFader -> fx1 -> fx2 -> [cue / volume]
+  source.connect(trim);
   trim.connect(low);
   low.connect(mid);
   mid.connect(high);
@@ -161,7 +149,7 @@ export function createDeckChain(_audioEl) {
   crossfade.connect(masterGain);
 
   return {
-    ctx, bufferInput, trim, low, mid, high, colorFilter, preFader, cueSend, volume, crossfade, analyser,
+    ctx, source, trim, low, mid, high, colorFilter, preFader, cueSend, volume, crossfade, analyser,
     fx1, fx2,
     // All user-controlled gain/freq changes use setTargetAtTime for smooth
     // 10ms ramps — this kills "zipper noise" (audible clicks) that you'd get
@@ -208,134 +196,6 @@ const deckChains = {};
 export function registerDeckChain(deckId, chain) { deckChains[deckId] = chain; }
 export function getDeckChain(deckId) { return deckChains[deckId] || null; }
 export function getAllDeckChains() { return deckChains; }
-
-// Module-level buffer player registry
-const bufferPlayers = {};
-export function registerBufferPlayer(deckId, player) { bufferPlayers[deckId] = player; }
-export function getBufferPlayer(deckId) { return bufferPlayers[deckId] || null; }
-
-/**
- * A BufferPlayer manages playback of a decoded AudioBuffer through a deck's
- * chain.bufferInput. Each play()/seek() creates a fresh AudioBufferSourceNode
- * (the spec requires this — AudioBufferSourceNode is one-shot). Because the
- * chain itself (EQ, filter, FX, volume, crossfade) never disconnects, the
- * audio remains glitch-free across seeks.
- *
- * Why this matters: the previous design used an HTMLAudioElement routed
- * through MediaElementSource. Every change to el.playbackRate caused the
- * browser's audio-element decoder to flush and re-prime, which you hear as
- * jitter/clicks during tempo moves. AudioBufferSourceNode has no decoder —
- * the buffer is already resident in RAM, and `source.playbackRate` is a
- * pure AudioParam that ramps smoothly with setTargetAtTime.
- */
-export function createBufferPlayer(chain) {
-  const ctx = chain.ctx;
-  let buffer = null;
-  let source = null;
-  let startCtxTime = 0; // ctx.currentTime when current source started
-  let startOffset = 0;  // buffer offset where current source started
-  let pausedAt = 0;     // last known position when stopped
-  let playing = false;
-  let rate = 1;
-  let onEndedCb = null;
-  let manualStop = false;
-
-  function createSource() {
-    const s = ctx.createBufferSource();
-    s.buffer = buffer;
-    s.playbackRate.value = rate;
-    s.connect(chain.bufferInput);
-    return s;
-  }
-
-  async function loadFromUrl(url) {
-    stop(false);
-    buffer = null;
-    pausedAt = 0;
-    const resp = await fetch(url);
-    const ab = await resp.arrayBuffer();
-    // decodeAudioData is safe to call on a fresh ArrayBuffer
-    buffer = await ctx.decodeAudioData(ab);
-    return buffer.duration;
-  }
-
-  async function loadFromBlob(blob) {
-    stop(false);
-    buffer = null;
-    pausedAt = 0;
-    const ab = await blob.arrayBuffer();
-    buffer = await ctx.decodeAudioData(ab);
-    return buffer.duration;
-  }
-
-  function play(fromSec) {
-    if (!buffer) return;
-    stop(false);
-    source = createSource();
-    const offset = Math.max(0, Math.min(buffer.duration - 0.001, fromSec != null ? fromSec : pausedAt));
-    source.onended = () => {
-      if (manualStop) { manualStop = false; return; }
-      // Natural end of buffer
-      playing = false;
-      pausedAt = 0;
-      if (onEndedCb) onEndedCb();
-    };
-    source.start(0, offset);
-    startCtxTime = ctx.currentTime;
-    startOffset = offset;
-    playing = true;
-  }
-
-  function stop(setPaused = true) {
-    if (source) {
-      manualStop = true;
-      try { source.stop(); } catch { /* already stopped */ }
-      try { source.disconnect(); } catch { /* ignore */ }
-      source = null;
-    }
-    if (setPaused && playing) {
-      pausedAt = getCurrentTime();
-    }
-    playing = false;
-  }
-
-  function pause() {
-    if (!playing) return;
-    stop(true);
-  }
-
-  function seek(sec) {
-    const wasPlaying = playing;
-    stop(false);
-    pausedAt = Math.max(0, Math.min(buffer ? buffer.duration : 0, sec));
-    if (wasPlaying) play(pausedAt);
-  }
-
-  function setPlaybackRate(newRate) {
-    rate = Math.max(0.001, newRate);
-    if (source) {
-      source.playbackRate.setTargetAtTime(rate, ctx.currentTime, 0.01);
-    }
-  }
-
-  function getCurrentTime() {
-    if (!playing) return pausedAt;
-    return startOffset + (ctx.currentTime - startCtxTime) * rate;
-  }
-
-  function getDuration() { return buffer ? buffer.duration : 0; }
-  function isLoaded() { return !!buffer; }
-  function isPlaying() { return playing; }
-  function setOnEnded(cb) { onEndedCb = cb; }
-
-  return {
-    loadFromUrl, loadFromBlob,
-    play, pause, stop, seek,
-    setPlaybackRate,
-    getCurrentTime, getDuration,
-    isLoaded, isPlaying, setOnEnded,
-  };
-}
 
 
 // Headphone helpers

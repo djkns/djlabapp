@@ -8,7 +8,7 @@ import LoopControls from "./LoopControls";
 import FXSlot from "./FXSlot";
 import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
-import { createDeckChain, createBufferPlayer, registerDeckChain, registerBufferPlayer, resumeAudioContext } from "@/lib/audioEngine";
+import { createDeckChain, registerDeckChain, resumeAudioContext } from "@/lib/audioEngine";
 import { readTags } from "@/lib/mediaTags";
 import { toast } from "sonner";
 
@@ -22,12 +22,11 @@ const formatTime = (s) => {
 export default function Deck({ id, label, accent }) {
   const letter = id === "deckA" ? "a" : "b";
   const waveRef = useRef(null);
+  const audioElRef = useRef(null);
   const wsRef = useRef(null);
   const chainRef = useRef(null);
-  const playerRef = useRef(null);
   const rafRef = useRef(null);
-  const positionRafRef = useRef(null);
-  const [trackUrl, setTrackUrl] = useState(null);
+  const currentTimeRef = useRef(0);
 
   const deck = useDJStore(useShallow((s) => ({
     track: s[id].track,
@@ -37,6 +36,7 @@ export default function Deck({ id, label, accent }) {
     baseBPM: s[id].baseBPM,
     tempoPct: s[id].tempoPct,
     tempoRange: s[id].tempoRange,
+    keylock: s[id].keylock,
     pflOn: s[id].pflOn,
     cuePoint: s[id].cuePoint,
     hotCues: s[id].hotCues,
@@ -53,100 +53,75 @@ export default function Deck({ id, label, accent }) {
 
   const [beatFlash, setBeatFlash] = useState(false);
 
-  // Chain + BufferPlayer
+  // Audio element + chain
   useEffect(() => {
-    try {
-      chainRef.current = createDeckChain();
-      playerRef.current = createBufferPlayer(chainRef.current);
-      registerDeckChain(id, chainRef.current);
-      registerBufferPlayer(id, playerRef.current);
-      window.dispatchEvent(new CustomEvent("dj:chain-ready", { detail: { deckId: id, chain: chainRef.current } }));
+    const el = new Audio();
+    el.crossOrigin = "anonymous";
+    el.preload = "auto";
+    audioElRef.current = el;
 
-      playerRef.current.setOnEnded(() => setDeck(id, { playing: false, currentTime: 0 }));
+    try {
+      chainRef.current = createDeckChain(el);
+      registerDeckChain(id, chainRef.current);
+      window.dispatchEvent(new CustomEvent("dj:chain-ready", { detail: { deckId: id, chain: chainRef.current } }));
     } catch (err) { console.error("deck chain error", err); }
 
-    // Position RAF: drives waveform cursor + loop boundary check + UI clock.
-    // Store writes throttled to 4Hz; cursor writes to Wavesurfer at ~30fps.
+    el.addEventListener("ended", () => setDeck(id, { playing: false }));
+    el.addEventListener("loadedmetadata", () => setDeck(id, { duration: el.duration || 0 }));
+    // Reduced-rate currentTime updates. Browser's `timeupdate` fires 4-8×/sec
+    // and caused every store-subscribed component to re-render, blocking the
+    // main thread (visible as sticky sliders + audio jitter). Instead we:
+    //  1. Keep a ref of the latest currentTime for in-this-file logic.
+    //  2. Only write the store every 250ms (4 Hz) for the UI clock display.
     let lastStoreWrite = 0;
-    let lastCursorWrite = 0;
-    const positionLoop = () => {
-      const player = playerRef.current;
-      if (player && player.isPlaying?.()) {
-        const t = player.getCurrentTime();
-        const s = useDJStore.getState()[id];
-        // Loop enforcement
-        if (s.loop?.enabled && s.loop.in != null && s.loop.out != null && t >= s.loop.out) {
-          player.seek(s.loop.in);
-          setDeck(id, { currentTime: s.loop.in });
-          lastStoreWrite = performance.now();
-        } else {
-          const now = performance.now();
-          if (now - lastStoreWrite > 250) {
-            setDeck(id, { currentTime: t });
-            lastStoreWrite = now;
-          }
-          if (wsRef.current && now - lastCursorWrite > 33) {
-            try { wsRef.current.setTime(t); } catch { /* not ready */ }
-            lastCursorWrite = now;
-          }
-        }
+    el.addEventListener("timeupdate", () => {
+      const t = el.currentTime || 0;
+      currentTimeRef.current = t;
+      // Loop behaviour uses the ref so no store access needed
+      const s = useDJStore.getState()[id];
+      if (s.loop?.enabled && s.loop.in != null && s.loop.out != null && t >= s.loop.out) {
+        el.currentTime = s.loop.in;
+        currentTimeRef.current = s.loop.in;
+        setDeck(id, { currentTime: s.loop.in });
+        lastStoreWrite = performance.now();
+        return;
       }
-      positionRafRef.current = requestAnimationFrame(positionLoop);
-    };
-    positionRafRef.current = requestAnimationFrame(positionLoop);
+      const now = performance.now();
+      if (now - lastStoreWrite > 250) {
+        setDeck(id, { currentTime: t });
+        lastStoreWrite = now;
+      }
+    });
 
-    return () => {
-      if (positionRafRef.current) cancelAnimationFrame(positionRafRef.current);
-      try { playerRef.current?.stop(false); } catch { /* ignore */ }
-    };
+    return () => { el.pause(); el.src = ""; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Wavesurfer — scrolling waveform with centered playhead (Rekordbox/Traktor style).
-  // In buffer-player mode Wavesurfer is display-only; the actual audio plays
-  // through the AudioBufferSourceNode. Cursor position is driven by the RAF
-  // position loop calling ws.setTime(). Clicks emit `interaction` events that
-  // seek the buffer player.
+  // Wavesurfer — scrolling waveform with centered playhead (Rekordbox/Traktor style)
   useEffect(() => {
-    if (!waveRef.current) return;
+    if (!waveRef.current || !audioElRef.current) return;
     const ws = WaveSurfer.create({
       container: waveRef.current,
       waveColor: "rgba(209, 10, 10, 0.55)",
       progressColor: accent || "#FF1F1F",
-      cursorColor: "transparent",
+      cursorColor: "transparent",      // we render our own centered playhead
       cursorWidth: 0,
       barWidth: 2,
       barRadius: 2,
       barGap: 1,
       height: 80,
       normalize: true,
+      media: audioElRef.current,
       interact: true,
-      autoScroll: true,
-      autoCenter: true,
-      minPxPerSec: 120,
+      autoScroll: true,               // scrolls past the cursor as it plays
+      autoCenter: true,               // keeps playhead in the center
+      minPxPerSec: 120,               // zoom: ~10s window
       hideScrollbar: true,
       fillParent: false,
     });
-    // Wavesurfer fires 'interaction' when the user clicks/scrubs the waveform
-    // (Wavesurfer v7 API). We seek the buffer player — not the waveform — to
-    // keep timing authoritative.
-    ws.on("interaction", (t) => {
-      const p = playerRef.current;
-      if (!p) return;
-      p.seek(t);
-      setDeck(id, { currentTime: t });
-    });
     wsRef.current = ws;
     return () => { ws.destroy(); wsRef.current = null; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accent]);
-
-  // Load the audio URL into Wavesurfer when trackUrl changes (decoded
-  // separately for display — cheaper than decoding from same blob).
-  useEffect(() => {
-    if (!wsRef.current || !trackUrl) return;
-    wsRef.current.load(trackUrl).catch(() => { /* ignore */ });
-  }, [trackUrl]);
 
   // EQ/Volume/Filter/Trim are wired by Mixer's ChannelStrip (single source of
   // truth). Removing them from Deck means Deck doesn't re-render on those
@@ -155,21 +130,27 @@ export default function Deck({ id, label, accent }) {
   // PFL / headphone cue on this deck
   useEffect(() => { chainRef.current?.setCueActive(!!deck.pflOn); }, [deck.pflOn]);
 
-  // Tempo (playback rate). AudioBufferSourceNode.playbackRate is a smooth
-  // AudioParam — setTargetAtTime in the player ramps for glitch-free tempo
-  // changes. No decoder re-sync, no clicks.
+  // Tempo (playback rate) + keylock. Throttle playbackRate writes so rapid
+  // tempo-fader drags don't cause the HTMLMediaElement decoder to
+  // continuously re-sync (audible as clicks / hiccups during tempo moves).
+  const tempoWriteRef = useRef({ rate: 1, lastWrite: 0 });
   useEffect(() => {
-    const p = playerRef.current; if (!p) return;
-    p.setPlaybackRate(1 + deck.tempoPct / 100);
-  }, [deck.tempoPct]);
+    const el = audioElRef.current; if (!el) return;
+    const targetRate = 1 + deck.tempoPct / 100;
+    const delta = Math.abs(targetRate - tempoWriteRef.current.rate);
+    const now = performance.now();
+    // Write immediately if >0.5% change since last write; otherwise coalesce at 33fps
+    if (delta > 0.005 || now - tempoWriteRef.current.lastWrite > 30) {
+      el.playbackRate = targetRate;
+      tempoWriteRef.current = { rate: targetRate, lastWrite: now };
+    }
+    el.preservesPitch = deck.keylock;
+  }, [deck.tempoPct, deck.keylock]);
 
-  const getCurrentTime = () => playerRef.current?.getCurrentTime() || 0;
+  const getCurrentTime = () => audioElRef.current?.currentTime || 0;
   const seekTo = (sec) => {
-    const p = playerRef.current;
-    if (!p) return;
-    p.seek(sec);
-    setDeck(id, { currentTime: sec });
-    try { wsRef.current?.setTime(sec); } catch { /* ignore */ }
+    if (!audioElRef.current) return;
+    audioElRef.current.currentTime = sec;
   };
 
   // --- Scratch (platter grab) ----------------------------------------------
@@ -183,40 +164,38 @@ export default function Deck({ id, label, accent }) {
   const jogPulseTimer = useRef(null);
 
   const onScratchStart = useCallback(() => {
-    const p = playerRef.current;
-    if (!p || !useDJStore.getState()[id].track) return;
-    scratchRef.current.wasPlaying = p.isPlaying();
-    scratchRef.current.baseTime = p.getCurrentTime();
-    scratchRef.current.savedRate = 1 + (useDJStore.getState()[id].tempoPct / 100);
-    try { p.pause(); } catch { /* noop */ }
+    const el = audioElRef.current;
+    if (!el || !useDJStore.getState()[id].track) return;
+    scratchRef.current.wasPlaying = !el.paused;
+    scratchRef.current.baseTime = el.currentTime || 0;
+    scratchRef.current.savedRate = el.playbackRate || 1;
+    try { el.pause(); } catch { /* noop */ }
   }, [id]);
 
   const onScratchMove = useCallback((deltaRad) => {
-    const p = playerRef.current;
-    if (!p || !useDJStore.getState()[id].track) return;
+    const el = audioElRef.current;
+    if (!el || !useDJStore.getState()[id].track) return;
     const deltaSec = (deltaRad / (2 * Math.PI)) * SCRATCH_SEC_PER_ROTATION;
-    const duration = p.getDuration();
-    const next = Math.max(0, Math.min((duration || 0) - 0.05, scratchRef.current.baseTime + deltaSec));
-    try { p.seek(next); } catch { /* noop */ }
+    const next = Math.max(0, Math.min((el.duration || 0) - 0.05, scratchRef.current.baseTime + deltaSec));
+    try { el.currentTime = next; } catch { /* noop */ }
     setDeck(id, { currentTime: next });
   }, [id, setDeck]);
 
   const onScratchEnd = useCallback(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    p.setPlaybackRate(scratchRef.current.savedRate);
+    const el = audioElRef.current;
+    if (!el) return;
+    el.playbackRate = scratchRef.current.savedRate;
+    el.preservesPitch = false;
     if (scratchRef.current.wasPlaying) {
-      p.play();
-      setDeck(id, { playing: true });
+      el.play().then(() => setDeck(id, { playing: true })).catch(() => {});
     }
   }, [id, setDeck]);
 
-  // Load track — fetch + decode into AudioBuffer via BufferPlayer
+  // Load track
   const loadTrack = useCallback(async (track) => {
     if (!track) return;
     setDeck(id, { loading: true, track, playing: false });
-    const p = playerRef.current;
-    if (!p) return;
+    const el = audioElRef.current;
     try {
       let playUrl = track.url;
       if (!playUrl && (track.source === "s3" || track.source === "demo")) {
@@ -224,23 +203,13 @@ export default function Deck({ id, label, accent }) {
         const data = await res.json();
         playUrl = data.url.startsWith("http") ? data.url : `${process.env.REACT_APP_BACKEND_URL}${data.url}`;
       }
-      // Tell Wavesurfer about the URL for visual display only
-      setTrackUrl(playUrl);
-      // Decode into AudioBuffer for playback
-      const duration = await p.loadFromUrl(playUrl);
-      setDeck(id, {
-        loading: false,
-        duration: duration || 0,
-        baseBPM: track.bpm || 120,
-        cuePoint: 0,
-        currentTime: 0,
-        hotCues: Array(8).fill(null),
-        loop: { in: null, out: null, enabled: false, beats: null },
-      });
+      el.src = playUrl;
+      el.load();
+      if (wsRef.current) { await wsRef.current.load(playUrl).catch(() => {}); }
+      setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
     } catch (err) {
       console.error("load error", err);
       setDeck(id, { loading: false });
-      toast.error("Track load failed", { description: err.message || "Could not decode audio." });
     }
   }, [id, setDeck]);
 
@@ -282,29 +251,16 @@ export default function Deck({ id, label, accent }) {
   const play = async () => {
     if (!deck.track) { toast.error("Load a track first", { description: `Deck ${label} is empty.` }); return; }
     await resumeAudioContext();
-    const p = playerRef.current;
-    if (!p || !p.isLoaded()) { toast.error("Track still loading"); return; }
-    try {
-      p.play();
-      setDeck(id, { playing: true });
-    } catch (e) {
-      console.error("play failed", e);
-      toast.error("Playback failed", { description: e.message || "Buffer player refused to start." });
-    }
+    try { await audioElRef.current.play(); setDeck(id, { playing: true }); }
+    catch (e) { console.error("play failed", e); toast.error("Playback failed", { description: e.message || "Audio element refused to start." }); }
   };
-  const pause = () => {
-    playerRef.current?.pause();
-    setDeck(id, { playing: false });
-  };
+  const pause = () => { audioElRef.current.pause(); setDeck(id, { playing: false }); };
   const togglePlay = () => (deck.playing ? pause() : play());
   const cue = () => {
-    const p = playerRef.current;
-    if (!p) return;
-    p.seek(deck.cuePoint || 0);
-    setDeck(id, { currentTime: deck.cuePoint || 0 });
+    audioElRef.current.currentTime = deck.cuePoint || 0;
     if (!deck.playing) play();
   };
-  const setCueHere = () => setDeck(id, { cuePoint: playerRef.current?.getCurrentTime() || 0 });
+  const setCueHere = () => setDeck(id, { cuePoint: audioElRef.current.currentTime });
 
   const sync = () => {
     if (!otherDeck?.track || !deck.baseBPM) return;
@@ -351,14 +307,12 @@ export default function Deck({ id, label, accent }) {
       else if (sub === "pfl") setPfl(id, !deck.pflOn);
       else if (sub === "jog") {
         // MIDI jog wheel: seek by ticks * JOG_SEC_PER_TICK. Clamp to track bounds.
-        const p = playerRef.current; if (!p) return;
-        const duration = p.getDuration();
-        const cur = p.getCurrentTime();
-        const next = Math.max(0, Math.min((duration || 0) - 0.05, cur + value * JOG_SEC_PER_TICK));
-        try { p.seek(next); } catch { /* noop */ }
+        const el = audioElRef.current; if (!el) return;
+        const next = Math.max(0, Math.min((el.duration || 0) - 0.05, (el.currentTime || 0) + value * JOG_SEC_PER_TICK));
+        try { el.currentTime = next; } catch { /* noop */ }
         setDeck(id, { currentTime: next });
         // Brief visual pulse on the platter
-        setJogPulse((jp) => jp + value * 0.12);
+        setJogPulse((p) => p + value * 0.12);
         if (jogPulseTimer.current) clearTimeout(jogPulseTimer.current);
         jogPulseTimer.current = setTimeout(() => setJogPulse(0), 220);
       }
@@ -564,13 +518,14 @@ export default function Deck({ id, label, accent }) {
         {/* Keylock + tempo range (stacked vertically, compact) */}
         <div className="flex flex-col gap-1 shrink-0">
           <button
-            onClick={() => toast.message("Keylock not available in buffer-player mode", {
-              description: "Pitch follows tempo in high-fidelity playback. Re-enable coming in a future build.",
-            })}
+            onClick={() => setDeck(id, { keylock: !deck.keylock })}
             data-testid={`deck-${letter}-keylock`}
-            title="Keylock — not available in buffer-player mode"
-            disabled
-            className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-[0.1em] border border-white/10 text-[#52525B] line-through cursor-not-allowed"
+            title="Keylock — preserve pitch when tempo changes"
+            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-[0.1em] border transition ${
+              deck.keylock
+                ? "border-[#FF1F1F] text-[#FF1F1F] bg-[#D10A0A]/20"
+                : "border-white/20 text-[#A1A1AA] hover:border-white/40 hover:text-white"
+            }`}
           >
             Keylock
           </button>
