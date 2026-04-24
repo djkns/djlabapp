@@ -89,25 +89,39 @@ export default function StreamConfigDialog({ open, onClose }) {
         )}
 
         <div className="grid grid-cols-2 gap-3 text-[11px]">
+          {/* Dummy hidden fields to confuse browser autofill — real fields below use autocomplete="off" */}
+          <input type="text" autoComplete="username" style={{ display: "none" }} />
+          <input type="password" autoComplete="new-password" style={{ display: "none" }} />
+
           <Field label="Host / server URL" required>
             <input value={cfg.host} onChange={(e) => save({ host: e.target.value })}
-              data-testid="stream-host" placeholder="djsandmc.media" />
+              data-testid="stream-host" placeholder="djsandmc.media"
+              autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              name="dj-stream-host" />
           </Field>
           <Field label="Port" required>
             <input type="number" value={cfg.port} onChange={(e) => save({ port: +e.target.value || 8000 })}
-              data-testid="stream-port" />
+              data-testid="stream-port" autoComplete="off" name="dj-stream-port" />
           </Field>
           <Field label="Mount point" required>
             <input value={cfg.mount} onChange={(e) => save({ mount: e.target.value })}
-              data-testid="stream-mount" placeholder="/radio.mp3" />
+              data-testid="stream-mount" placeholder="/radio.mp3"
+              autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              name="dj-stream-mount" />
           </Field>
           <Field label="Source username">
             <input value={cfg.user} onChange={(e) => save({ user: e.target.value })}
-              data-testid="stream-user" placeholder="source" />
+              data-testid="stream-user" placeholder="source"
+              autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              name="dj-stream-user"
+              readOnly onFocus={(e) => e.target.removeAttribute("readOnly")} />
           </Field>
           <Field label="Source password" required>
             <input type="password" value={cfg.password} onChange={(e) => save({ password: e.target.value })}
-              data-testid="stream-password" placeholder="••••••••••" />
+              data-testid="stream-password" placeholder="••••••••••"
+              autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              name="dj-stream-password"
+              readOnly onFocus={(e) => e.target.removeAttribute("readOnly")} />
           </Field>
           <Field label="MP3 bitrate">
             <select value={cfg.bitrate} onChange={(e) => save({ bitrate: +e.target.value })}
@@ -121,16 +135,16 @@ export default function StreamConfigDialog({ open, onClose }) {
           </Field>
           <Field label="Station name">
             <input value={cfg.stationName} onChange={(e) => save({ stationName: e.target.value })}
-              data-testid="stream-station-name" />
+              data-testid="stream-station-name" autoComplete="off" name="dj-stream-station" />
           </Field>
           <Field label="Genre">
             <input value={cfg.genre} onChange={(e) => save({ genre: e.target.value })}
-              data-testid="stream-genre" />
+              data-testid="stream-genre" autoComplete="off" name="dj-stream-genre" />
           </Field>
           <div className="col-span-2">
             <Field label="Description">
               <input value={cfg.description} onChange={(e) => save({ description: e.target.value })}
-                data-testid="stream-description" />
+                data-testid="stream-description" autoComplete="off" name="dj-stream-description" />
             </Field>
           </div>
         </div>
