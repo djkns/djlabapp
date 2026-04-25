@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Gamepad2, Plug, PlugZap, Activity, Check, ChevronDown, ChevronRight } from "lucide-react";
-import { useDJStore } from "@/store/djStore";
+import { X, Gamepad2, Plug, PlugZap, Activity, Check, ChevronDown, ChevronRight, Download, Upload } from "lucide-react";
+import { useDJStore, flushDJStore } from "@/store/djStore";
+import { toast } from "sonner";
 import {
   requestMidi,
   listMidiInputs,
@@ -201,6 +202,9 @@ export default function MidiPanel({ open, onClose }) {
         channel: detail.channel,
       });
       setMidi({ learning: null });
+      // Persist immediately so a tab close within 400ms can't lose the mapping.
+      flushDJStore();
+      toast.success("Mapping saved", { description: midi.learning, duration: 1500 });
     };
 
     const handler = (e) => {
@@ -283,18 +287,71 @@ export default function MidiPanel({ open, onClose }) {
               <span className="text-2xl font-black text-white">{mappedCount}</span>
               <span className="text-xs text-[#52525B]">/ {totalCount} mapped</span>
             </div>
-            <button
-              onClick={() => setMidi({ enabled: !midi.enabled })}
-              data-testid="midi-panic"
-              title={midi.enabled ? "Pause MIDI dispatch (mappings preserved)" : "Resume MIDI dispatch"}
-              className={`px-3 py-1 rounded text-[10px] uppercase tracking-[0.2em] font-bold border-2 transition ${
-                midi.enabled
-                  ? "border-[#FF1F1F] text-[#FF1F1F] hover:bg-[#FF1F1F] hover:text-white"
-                  : "border-[#A1A1AA] text-[#A1A1AA] bg-[#52525B]/20 hover:border-white hover:text-white"
-              }`}
-            >
-              {midi.enabled ? "Panic · Disable" : "Resume MIDI"}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  const blob = new Blob(
+                    [JSON.stringify({ djlab_midi_mappings: 1, mappings: midi.mappings, exported_at: new Date().toISOString() }, null, 2)],
+                    { type: "application/json" }
+                  );
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `djlab-mappings-${new Date().toISOString().slice(0,10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                  toast.success(`Exported ${Object.keys(midi.mappings).length} mappings`);
+                }}
+                data-testid="midi-export"
+                title="Save mappings to a backup .json file"
+                className="px-2 py-1 rounded border border-white/15 text-[10px] uppercase tracking-[0.18em] font-bold text-[#A1A1AA] hover:border-[#FF1F1F] hover:text-[#FF1F1F] flex items-center gap-1"
+              >
+                <Download className="w-3 h-3" /> Export
+              </button>
+              <label
+                data-testid="midi-import-label"
+                title="Load a previously-exported mappings file"
+                className="px-2 py-1 rounded border border-white/15 text-[10px] uppercase tracking-[0.18em] font-bold text-[#A1A1AA] hover:border-[#FF1F1F] hover:text-[#FF1F1F] flex items-center gap-1 cursor-pointer"
+              >
+                <Upload className="w-3 h-3" /> Import
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  data-testid="midi-import"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    try {
+                      const text = await f.text();
+                      const data = JSON.parse(text);
+                      if (!data?.mappings || typeof data.mappings !== "object") {
+                        toast.error("Not a valid mappings file");
+                        return;
+                      }
+                      setMidi({ mappings: data.mappings });
+                      flushDJStore();
+                      toast.success(`Imported ${Object.keys(data.mappings).length} mappings`);
+                    } catch (err) {
+                      toast.error("Import failed", { description: String(err.message || err) });
+                    } finally {
+                      e.target.value = "";
+                    }
+                  }}
+                />
+              </label>
+              <button
+                onClick={() => setMidi({ enabled: !midi.enabled })}
+                data-testid="midi-panic"
+                title={midi.enabled ? "Pause MIDI dispatch (mappings preserved)" : "Resume MIDI dispatch"}
+                className={`px-3 py-1 rounded text-[10px] uppercase tracking-[0.2em] font-bold border-2 transition ${
+                  midi.enabled
+                    ? "border-[#FF1F1F] text-[#FF1F1F] hover:bg-[#FF1F1F] hover:text-white"
+                    : "border-[#A1A1AA] text-[#A1A1AA] bg-[#52525B]/20 hover:border-white hover:text-white"
+                }`}
+              >
+                {midi.enabled ? "Panic · Disable" : "Resume MIDI"}
+              </button>
+            </div>
           </div>
         </div>
 

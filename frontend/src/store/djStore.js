@@ -2,10 +2,10 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 /**
- * Throttled localStorage — only writes at most once per 400ms.
- * Dragging a fader fires 60+ setState calls per second; writing the whole
- * store JSON to localStorage on each one introduces audible audio jitter
- * because setItem blocks the main thread for a few ms.
+ * Throttled localStorage — coalesces writes up to once per 400ms during
+ * heavy state churn (fader drags fire 60+ setStates/sec). Pending writes
+ * are flushed on `beforeunload` and `visibilitychange:hidden` so a refresh
+ * or tab-close NEVER loses a freshly-learned MIDI mapping or hot cue.
  */
 const throttledLocalStorage = (() => {
   let pending = null;
@@ -15,8 +15,16 @@ const throttledLocalStorage = (() => {
     if (pendingKey !== null) {
       try { window.localStorage.setItem(pendingKey, pending); } catch { /* quota */ }
     }
-    pendingKey = null; pending = null; timer = null;
+    pendingKey = null; pending = null;
+    if (timer) { clearTimeout(timer); timer = null; }
   };
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", flush);
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flush();
+    });
+  }
   return {
     getItem: (k) => window.localStorage.getItem(k),
     setItem: (k, v) => {
@@ -24,8 +32,12 @@ const throttledLocalStorage = (() => {
       if (!timer) timer = setTimeout(flush, 400);
     },
     removeItem: (k) => window.localStorage.removeItem(k),
+    flush, // exposed for explicit "Save Now" button
   };
 })();
+
+// Expose flush so UI can trigger an immediate write (e.g. after MIDI Learn)
+export const flushDJStore = () => throttledLocalStorage.flush();
 
 const HOT_CUE_COUNT = 8;
 const emptyHotCues = () => Array.from({ length: HOT_CUE_COUNT }, () => null);
