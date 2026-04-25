@@ -1,6 +1,5 @@
 import { Radio, Gamepad2, Save, FolderOpen, Square, FileAudio } from "lucide-react";
 import { useDJStore } from "@/store/djStore";
-import LatencyReadout from "./LatencyReadout";
 
 export default function Header({
   s3Configured, onOpenMidi, onOpenSaveSet, onOpenSavedSets,
@@ -92,7 +91,6 @@ export default function Header({
       </div>
 
       <div className="flex items-center gap-4">
-        <LatencyReadout />
         <button
           data-testid="header-midi"
           onClick={onOpenMidi}
