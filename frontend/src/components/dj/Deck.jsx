@@ -6,6 +6,7 @@ import EQKnob from "./EQKnob";
 import HotCuePad from "./HotCuePad";
 import LoopControls from "./LoopControls";
 import FXSlot from "./FXSlot";
+import RecentlyPlayed from "./RecentlyPlayed";
 import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
@@ -428,9 +429,10 @@ export default function Deck({ id, label, accent }) {
     fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/played`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: trackKey }),
+      body: JSON.stringify({ key: trackKey, deck: id === "deckA" ? "A" : "B" }),
     })
-      .then(() => window.dispatchEvent(new CustomEvent("dj:track-played", { detail: { key: trackKey } })))
+      .then(() => window.dispatchEvent(new CustomEvent("dj:track-played",
+        { detail: { key: trackKey, deck: id === "deckA" ? "A" : "B" } })))
       .catch(() => {});
   }, [deck.track?.key, deck.playing, deck.currentTime]);
 
@@ -814,6 +816,9 @@ export default function Deck({ id, label, accent }) {
           <FXSlot deckId={id} slotKey="fx1" chain={chainRef.current} />
         </div>
       </div>
+
+      {/* Per-deck recently played — fills empty space below the FX rack */}
+      <RecentlyPlayed deckId={id} deckLabel={label} limit={8} />
     </div>
   );
 }

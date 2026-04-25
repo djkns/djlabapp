@@ -209,8 +209,10 @@ class TrackMeta(BaseModel):
     title: Optional[str] = None
     artist: Optional[str] = None
     album: Optional[str] = None
-    cover: Optional[str] = None  # data URL, kept short — only stored if reasonably small
+    cover: Optional[str] = None
     last_played: Optional[datetime] = None
+    last_played_deckA: Optional[datetime] = None
+    last_played_deckB: Optional[datetime] = None
     play_count: Optional[int] = 0
     updated_at: Optional[datetime] = None
 
@@ -228,6 +230,7 @@ class TrackMetaUpsert(BaseModel):
 
 class PlayedMark(BaseModel):
     key: str
+    deck: Optional[str] = None  # "A" | "B" — used for per-deck history
 
 
 @api_router.get("/")
@@ -281,30 +284,40 @@ async def list_tracks(source: Optional[str] = Query(None, description="'s3' | 'd
 
 @api_router.post("/tracks/played")
 async def mark_track_played(payload: PlayedMark):
-    """Mark a track as played: bumps `last_played` to now and increments play_count."""
+    """Mark a track as played: bumps `last_played` (global) + `last_played_deckA/B`
+    when a deck is provided. Increments `play_count`."""
     if not payload.key:
         raise HTTPException(status_code=400, detail="key required")
     now = datetime.now(timezone.utc).isoformat()
+    set_doc = {"key": payload.key, "last_played": now, "updated_at": now}
+    if payload.deck in ("A", "a"):
+        set_doc["last_played_deckA"] = now
+    elif payload.deck in ("B", "b"):
+        set_doc["last_played_deckB"] = now
     await db.track_meta.update_one(
         {"key": payload.key},
-        {
-            "$set": {"key": payload.key, "last_played": now, "updated_at": now},
-            "$inc": {"play_count": 1},
-        },
+        {"$set": set_doc, "$inc": {"play_count": 1}},
         upsert=True,
     )
-    return {"ok": True, "key": payload.key, "last_played": now}
+    return {"ok": True, "key": payload.key, "last_played": now, "deck": payload.deck}
 
 
 @api_router.get("/tracks/recent", response_model=List[Track])
-async def get_recent_tracks(limit: int = Query(10, ge=1, le=50)):
-    """Return tracks ordered by most-recently-played first.
-    Joins cached title/artist/cover so the strip can render thumbnails without
-    a second round-trip per track."""
+async def get_recent_tracks(
+    limit: int = Query(10, ge=1, le=50),
+    deck: Optional[str] = Query(None, description="'A' | 'B' for per-deck history; None = global"),
+):
+    """Tracks ordered by most-recently-played first, optionally filtered by deck."""
+    if deck in ("A", "a"):
+        sort_field = "last_played_deckA"
+    elif deck in ("B", "b"):
+        sort_field = "last_played_deckB"
+    else:
+        sort_field = "last_played"
     cursor = db.track_meta.find(
-        {"last_played": {"$ne": None}},
-        {"_id": 0, "key": 1, "title": 1, "artist": 1, "album": 1, "cover": 1, "bpm": 1, "last_played": 1},
-    ).sort("last_played", -1).limit(limit)
+        {sort_field: {"$ne": None}},
+        {"_id": 0, "key": 1, "title": 1, "artist": 1, "album": 1, "cover": 1, "bpm": 1, sort_field: 1},
+    ).sort(sort_field, -1).limit(limit)
     docs = await cursor.to_list(limit)
     out = []
     for d in docs:

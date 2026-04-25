@@ -3,7 +3,6 @@ import Header from "@/components/dj/Header";
 import Deck from "@/components/dj/Deck";
 import Mixer from "@/components/dj/Mixer";
 import TrackLibrary from "@/components/dj/TrackLibrary";
-import RecentlyPlayed from "@/components/dj/RecentlyPlayed";
 import DesktopOnlyOverlay from "@/components/dj/DesktopOnlyOverlay";
 import SaveSetDialog from "@/components/dj/SaveSetDialog";
 import SavedSetsDrawer from "@/components/dj/SavedSetsDrawer";
@@ -133,8 +132,6 @@ export default function DJLab() {
             <Deck id="deckB" label="B" accent="#FF1F1F" />
           </section>
         </main>
-
-        <RecentlyPlayed />
 
         <TrackLibrary open={libOpen} onToggle={() => setLibOpen((v) => !v)} />
 

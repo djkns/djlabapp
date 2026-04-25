@@ -127,7 +127,7 @@ export default function TrackLibrary({ open, onToggle }) {
         </span>
       </button>
 
-      <div className="h-[40vh] bg-[#0a0a0a]/98 backdrop-blur-2xl border-t border-white/10 overflow-hidden flex flex-col">
+      <div className="h-[60vh] bg-[#0a0a0a]/98 backdrop-blur-2xl border-t border-white/10 overflow-hidden flex flex-col">
         <div className="p-3 flex items-center gap-3 border-b border-white/5">
           <div className="relative flex-1 max-w-md">
             <Search className="w-3.5 h-3.5 absolute top-1/2 -translate-y-1/2 left-3 text-[#52525B]" />
