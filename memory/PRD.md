@@ -49,17 +49,14 @@ Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Desig
 - [x] **Vertical fader modern-Chrome compatibility (FIXED 2026-02-23)**
 
 ## Fixed During This Session
-- **2026-02-25 — Icecast/AzuraCast streaming finally works (RCA fix).** Five bugs uncovered and fixed in sequence:
-  1. **`ffmpeg` was not installed** in the container — installed v5.1.8 with libmp3lame/libopus/librtmp.
-  2. **`/api/stream/status` route registered AFTER `app.include_router(api_router)`** — FastAPI silently ignored it. Reordered so all routes (including streaming) are added before include.
-  3. **Diagnostics added** — sanitized target URL, byte counter, ffmpeg stderr passthrough, friendly 401/404/connection-refused/DNS messages, early-exit watcher catches ffmpeg crashes within 2s.
-  4. **Always pack creds + use `-legacy_icecast 1` unless user explicitly picks Icecast 2** — solves stale-config edge cases.
-  5. **Icecast 2 mode now uses `http://` HTTP PUT instead of `icecast://`** — ffmpeg's icecast:// plugin rejects empty mounts ("No mountpoint specified"), but AzuraCast's default streamer mount is literally `/`. Switched to `-method PUT -auth_type basic -content_type audio/mpeg` with `Ice-*` headers. User confirmed end-to-end stream live.
-- **2026-02-25 — LED feedback for all controller buttons.** `LedFeedback.jsx` mirrors play/PFL/keylock/loop/FX/hot-cues/HP/mic state to the controller via the same MIDI signature each control was learned with. 5 new MIDI-mappable controls added (keylock × 2, loop × 2, hp.enabled).
-- **2026-02-25 — T7-style HP MASTER button.** Cyan-glow toggle in HP column gates master mix into headphone path (matches T7 hardware behavior).
-- **2026-02-24 — Persistent BPM + hot cues per track in MongoDB.** `track_meta` collection. Cache hits skip beat-detection. Hot cues survive page reload.
-- **2026-02-24 — Auto BPM detection.** `web-audio-beat-detector` dual-algorithm (`analyze` + `guess`) with toast feedback.
-- **2026-02-24 — Knob/fader bouncing fixed.** Reverted to simple controlled pattern. Faders restyled to match crossfader. `latencyHint: "interactive"` + DJ-grade mic constraints.
+- **2026-02-25 — Library workflow upgrade.** Track Library now uses `react-window@2.2.7` virtual scrolling (only ~10 of 1,725 rows in DOM at a time), a live search bar that filters by title/artist/album, and rows are draggable — drop on a deck to load. Decks accept the new `application/x-djlab-track` drag payload.
+- **2026-02-25 — RECENTLY PLAYED strip.** New `RecentlyPlayed.jsx` between the deck/mixer grid and the library toggle. Cards show album art, title, artist; hover reveals A/B quick-load buttons; cards are also draggable onto decks.
+- **2026-02-25 — Play tracking.** `Deck.jsx` posts `POST /api/tracks/played` once a track has been playing ≥ 30 seconds (per-track-key debounced via ref). Backend bumps `last_played` + `play_count` on `track_meta`. New endpoints: `POST /api/tracks/played`, `GET /api/tracks/recent?limit=N`. Refresh trigger via `dj:track-played` window event.
+- **2026-02-25 — Album art from ID3 tags.** Reads tags via `jsmediatags` (first 256KB Range request) on track-load if not cached; persists title/artist/album/cover to `track_meta`. Vinyl renders as a "picture disc" when cover is present.
+- **2026-02-25 — Icecast/AzuraCast streaming finally works (RCA fix).** ffmpeg installed; route ordering fix; `http://` HTTP PUT for Icecast 2 mode (works with mount `/`).
+- **2026-02-25 — LED feedback for all controller buttons.** `LedFeedback.jsx` mirrors play/PFL/keylock/loop/FX/hot-cues/HP/mic state via learned MIDI signatures.
+- **2026-02-25 — T7-style HP MASTER button** with Web Audio gating.
+- **2026-02-24 — Persistent BPM + hot cues, auto BPM detection (dual-algorithm), knob/fader bouncing fix, fader feel matching crossfader.**
 - **2026-02-24 — Knob / fader bouncing (P0).** Reverted `EQKnob.jsx` and `SmoothSlider.jsx` to the simple fully-controlled `value` + `onChange` pattern. The previous hybrid (rAF throttling + `localValue` + `onChangeRef` for knobs; `defaultValue` + `useEffect` imperative-sync for sliders) was fighting React's render cycle and causing visible thumb bounce. Verified in-browser: MID EQ knob rotates smoothly, VOL A fader tracks from 0.8→1.0 without snap-back, crossfader reaches 0.72 from center without bounce.
 - **2026-02-23 — Vertical fader rendering in Chrome 124+.** Chrome 124+ removed `-webkit-appearance: slider-vertical`. Replaced with W3C standard `writing-mode: vertical-lr; direction: rtl; appearance: auto`. Verified click/drag working top→bottom.
 - **2026-02-23 — Badge clearance.** Added `pb-24` bottom padding on main + `pb-20` on mixer scroll area; moved "Part of the NU Vibe Network" footer to bottom-left so it doesn't collide with Emergent preview badge.

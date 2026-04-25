@@ -397,12 +397,44 @@ export default function Deck({ id, label, accent }) {
   };
   const onDrop = async (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files?.[0]; if (!file) return;
+    // Two drop sources:
+    //   • Native file drag (uploads from desktop)
+    //   • Drag from the in-app TrackLibrary (we set application/x-djlab-track on dragstart)
+    const trackJson = e.dataTransfer.getData("application/x-djlab-track");
+    if (trackJson) {
+      try {
+        const t = JSON.parse(trackJson);
+        loadTrack(t);
+        return;
+      } catch { /* fall through to file path */ }
+    }
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
     loadTrack(await trackFromFile(file, "drop"));
   };
 
+  // Mark track as played in MongoDB once it's been playing >= 30 seconds.
+  // Skips local/drop tracks. Debounced via a ref so back-to-back loads of the
+  // same track + scrubbing past 30s don't double-count. Triggers a window
+  // event so the RecentlyPlayed strip refreshes immediately.
+  const playedMarkedRef = useRef(null);
+  useEffect(() => { playedMarkedRef.current = null; }, [deck.track?.key]);
+  useEffect(() => {
+    const trackKey = deck.track?.key;
+    if (!trackKey || trackKey.startsWith("local-") || trackKey.startsWith("drop-")) return;
+    if (playedMarkedRef.current === trackKey) return;
+    if (!deck.playing || (deck.currentTime || 0) < 30) return;
+    playedMarkedRef.current = trackKey;
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/played`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: trackKey }),
+    })
+      .then(() => window.dispatchEvent(new CustomEvent("dj:track-played", { detail: { key: trackKey } })))
+      .catch(() => {});
+  }, [deck.track?.key, deck.playing, deck.currentTime]);
+
   // Persist hot cues to MongoDB whenever they change. Debounced 600ms so
-  // back-to-back set/clears coalesce into one POST. Skips local-file tracks
   // (their key is a one-off `local-<timestamp>` so caching them is pointless).
   // Skips the first observation per-track-key (treats it as the baseline) so
   // the all-null reset that happens during loadTrack doesn't overwrite the

@@ -210,6 +210,8 @@ class TrackMeta(BaseModel):
     artist: Optional[str] = None
     album: Optional[str] = None
     cover: Optional[str] = None  # data URL, kept short — only stored if reasonably small
+    last_played: Optional[datetime] = None
+    play_count: Optional[int] = 0
     updated_at: Optional[datetime] = None
 
 
@@ -222,6 +224,10 @@ class TrackMetaUpsert(BaseModel):
     artist: Optional[str] = None
     album: Optional[str] = None
     cover: Optional[str] = None
+
+
+class PlayedMark(BaseModel):
+    key: str
 
 
 @api_router.get("/")
@@ -271,6 +277,48 @@ async def list_tracks(source: Optional[str] = Query(None, description="'s3' | 'd
             if c.get("cover"):
                 t["cover"] = c["cover"]
     return result
+
+
+@api_router.post("/tracks/played")
+async def mark_track_played(payload: PlayedMark):
+    """Mark a track as played: bumps `last_played` to now and increments play_count."""
+    if not payload.key:
+        raise HTTPException(status_code=400, detail="key required")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.track_meta.update_one(
+        {"key": payload.key},
+        {
+            "$set": {"key": payload.key, "last_played": now, "updated_at": now},
+            "$inc": {"play_count": 1},
+        },
+        upsert=True,
+    )
+    return {"ok": True, "key": payload.key, "last_played": now}
+
+
+@api_router.get("/tracks/recent", response_model=List[Track])
+async def get_recent_tracks(limit: int = Query(10, ge=1, le=50)):
+    """Return tracks ordered by most-recently-played first.
+    Joins cached title/artist/cover so the strip can render thumbnails without
+    a second round-trip per track."""
+    cursor = db.track_meta.find(
+        {"last_played": {"$ne": None}},
+        {"_id": 0, "key": 1, "title": 1, "artist": 1, "album": 1, "cover": 1, "bpm": 1, "last_played": 1},
+    ).sort("last_played", -1).limit(limit)
+    docs = await cursor.to_list(limit)
+    out = []
+    for d in docs:
+        out.append({
+            "key": d["key"],
+            "name": d.get("title") or d["key"].rsplit("/", 1)[-1].rsplit(".", 1)[0],
+            "title": d.get("title"),
+            "artist": d.get("artist") or "",
+            "album": d.get("album") or "",
+            "cover": d.get("cover"),
+            "bpm": d.get("bpm"),
+            "source": "s3",
+        })
+    return out
 
 
 @api_router.get("/tracks/meta", response_model=TrackMeta)
