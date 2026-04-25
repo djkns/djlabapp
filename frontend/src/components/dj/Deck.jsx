@@ -49,6 +49,7 @@ export default function Deck({ id, label, accent }) {
                 (1 + (id === "deckA" ? s.deckB : s.deckA).tempoPct / 100),
   })));
   const setDeck = useDJStore((s) => s.setDeck);
+  const setLoop = useDJStore((s) => s.setLoop);
   const setDeckEQ = useDJStore((s) => s.setDeckEQ);
   const setHotCue = useDJStore((s) => s.setHotCue);
   const setPfl = useDJStore((s) => s.setPfl);
@@ -550,7 +551,17 @@ export default function Deck({ id, label, accent }) {
       else if (sub === "sync") sync();
       else if (sub === "pfl") setPfl(id, !deck.pflOn);
       else if (sub === "keylock") setDeck(id, { keylock: !deck.keylock });
-      else if (sub === "loop") setDeck(id, { loop: { ...deck.loop, enabled: !deck.loop?.enabled } });
+      else if (sub === "loopIn") {
+        const t = audioElRef.current?.currentTime ?? 0;
+        setLoop(id, { in: t, enabled: false, beats: null });
+      }
+      else if (sub === "loopOut") {
+        const t = audioElRef.current?.currentTime ?? 0;
+        const curLoop = useDJStore.getState()[id].loop;
+        if (curLoop?.in != null && t > curLoop.in) {
+          setLoop(id, { out: t, enabled: true });
+        }
+      }
       else if (sub === "jog") {
         // MIDI jog wheel: seek by ticks * JOG_SEC_PER_TICK. Clamp to track bounds.
         const el = audioElRef.current; if (!el) return;
