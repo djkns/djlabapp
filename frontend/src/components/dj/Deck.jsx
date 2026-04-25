@@ -10,7 +10,7 @@ import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
 import { readTags } from "@/lib/mediaTags";
-import { analyze as analyzeBPM } from "web-audio-beat-detector";
+import { analyze as analyzeBPM, guess as guessBPM } from "web-audio-beat-detector";
 import { toast } from "sonner";
 
 const formatTime = (s) => {
@@ -276,7 +276,33 @@ export default function Deck({ id, label, accent }) {
             const ac = getAudioContext().ctx;
             buf = await ac.decodeAudioData(arr.slice(0));
           }
-          const bpm = await analyzeBPM(buf);
+          // Try the two algorithms web-audio-beat-detector ships:
+          //   • analyze(buf) — returns a single tempo (occasionally falls
+          //     back to ~120 when it can't lock onto rhythm).
+          //   • guess(buf)   — returns { bpm, offset } using a different
+          //     onset-correlation pass.
+          // Take guess() as the answer when the two disagree by less than
+          // 5%, otherwise prefer the one that's NOT exactly 120 (the
+          // suspicious default).
+          let bpm = null;
+          let analyzeBpm = null;
+          let guessBpm = null;
+          try { analyzeBpm = await analyzeBPM(buf); } catch { /* ignore */ }
+          try { const g = await guessBPM(buf); guessBpm = g?.bpm ?? null; } catch { /* ignore */ }
+          if (analyzeBpm && guessBpm) {
+            const diff = Math.abs(analyzeBpm - guessBpm) / Math.max(analyzeBpm, guessBpm);
+            if (diff < 0.05) {
+              bpm = guessBpm; // they agree → trust either, prefer guess (it's typically more stable)
+            } else if (Math.round(analyzeBpm) === 120 && Math.round(guessBpm) !== 120) {
+              bpm = guessBpm; // analyze defaulted, guess found something
+            } else if (Math.round(guessBpm) === 120 && Math.round(analyzeBpm) !== 120) {
+              bpm = analyzeBpm;
+            } else {
+              bpm = guessBpm; // disagree — prefer guess (more reliable per testing)
+            }
+          } else {
+            bpm = analyzeBpm || guessBpm;
+          }
           const cur = useDJStore.getState()[id].track;
           if (cur?.key !== trackKey) return;
           if (bpm && isFinite(bpm) && bpm >= 60 && bpm <= 200) {
