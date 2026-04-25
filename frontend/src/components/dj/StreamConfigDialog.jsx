@@ -45,6 +45,13 @@ export default function StreamConfigDialog({ open, onClose }) {
       toast.error("Host and password are required");
       return;
     }
+    const mt = (cfg.mount || "").trim();
+    if (!mt || mt === "/") {
+      toast.error("Mount point can't be just '/'", {
+        description: "AzuraCast / Icecast requires a real mountpoint. Try /radio or check Streamers → your DJ account in AzuraCast for the exact mount.",
+      });
+      return;
+    }
     setBusy(true);
     try {
       await startStream(cfg);
