@@ -101,12 +101,6 @@ export default function Header({
           <Gamepad2 className="w-3.5 h-3.5" />
           {midi.enabled ? (midi.deviceName?.slice(0, 18) || "MIDI ON") : "MIDI"}
         </button>
-
-        <div className={`hidden md:flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase ${streaming ? "text-[#FF1F1F]" : "text-[#A1A1AA]"}`}
-             title={s3Configured ? "S3 library connected" : "Demo library — configure S3 in backend/.env"}>
-          <Radio className={`w-3.5 h-3.5 ${streaming ? "text-[#FF1F1F] beat-pulse" : "text-[#52525B]"}`} />
-          {streaming ? "On Air" : "Off Air"}
-        </div>
       </div>
     </header>
   );
