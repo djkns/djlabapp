@@ -475,6 +475,8 @@ export default function Deck({ id, label, accent }) {
       else if (sub === "cue") cue();
       else if (sub === "sync") sync();
       else if (sub === "pfl") setPfl(id, !deck.pflOn);
+      else if (sub === "keylock") setDeck(id, { keylock: !deck.keylock });
+      else if (sub === "loop") setDeck(id, { loop: { ...deck.loop, enabled: !deck.loop?.enabled } });
       else if (sub === "jog") {
         // MIDI jog wheel: seek by ticks * JOG_SEC_PER_TICK. Clamp to track bounds.
         const el = audioElRef.current; if (!el) return;
