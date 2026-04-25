@@ -32,7 +32,11 @@ let hpSinkId = "default";
 export function getAudioContext() {
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext;
-    ctx = new AC();
+    // 'interactive' asks the browser for the smallest output buffer it can
+    // provide — on most hardware this drops output latency to ~10–20ms vs the
+    // ~25-50ms default. Critical for DJ feel: every fader/knob/scratch lands
+    // sooner. Trade-off: slightly higher CPU; acceptable for our use case.
+    ctx = new AC({ latencyHint: "interactive" });
 
     masterGain = ctx.createGain();
     masterGain.gain.value = 1.0;
@@ -240,12 +244,24 @@ let micStream = null;
 let micSource = null;
 let micGain = null;
 
+/**
+ * DJ-grade mic constraints: disable browser-side processing so the mic feed
+ * is dry + low-latency. Echo cancellation, AGC, and noise suppression each
+ * add 20-40ms of look-ahead and squash transients (handclaps, plosives) —
+ * unwanted in a live DJ context where the user controls levels via the
+ * channel strip and broadcasts to a separate audience.
+ */
+export const DJ_MIC_CONSTRAINTS = {
+  echoCancellation: false,
+  autoGainControl: false,
+  noiseSuppression: false,
+};
+
 export async function enableMic(enabled) {
   if (enabled) {
     if (micStream) return true; // already on
     try {
-      // Simple `audio: true` — Safari rejects complex constraint objects.
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: DJ_MIC_CONSTRAINTS });
       return enableMicWithStream(stream);
     } catch (err) {
       console.error("mic enable failed", err);

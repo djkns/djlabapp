@@ -6,7 +6,7 @@ import {
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, enableMicWithStream, setMicVolume,
   enableHeadphones, setHeadphoneMix, setHeadphoneVolume,
-  getDeckChain,
+  getDeckChain, DJ_MIC_CONSTRAINTS,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
@@ -235,7 +235,9 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     }
     // Firefox / Safari require getUserMedia to be called synchronously inside
     // the user-gesture click handler. Resume AudioContext in parallel.
-    const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
+    // DJ_MIC_CONSTRAINTS disables echoCancellation/AGC/noiseSuppression for
+    // dry, low-latency mic monitoring.
+    const micPromise = navigator.mediaDevices.getUserMedia({ audio: DJ_MIC_CONSTRAINTS });
     resumeAudioContext();
     (async () => {
       try {
