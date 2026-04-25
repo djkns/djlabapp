@@ -18,7 +18,7 @@ import { getMasterStream } from "@/lib/audioEngine";
 let ws = null;
 let recorder = null;
 let statusListeners = new Set();
-let currentStatus = { connected: false, errorText: null, ffmpegLines: [] };
+let currentStatus = { connected: false, errorText: null, ffmpegLines: [], bytesSent: 0 };
 
 const emit = (patch) => {
   currentStatus = { ...currentStatus, ...patch };
@@ -68,6 +68,12 @@ export async function startStream(cfg) {
       const msg = JSON.parse(ev.data);
       if (msg.type === "connected") {
         emit({ connected: true, errorText: null });
+      } else if (msg.type === "info") {
+        currentStatus.ffmpegLines.push(`[srv] ${msg.message}`);
+        if (currentStatus.ffmpegLines.length > 40) currentStatus.ffmpegLines.shift();
+        emit({});
+      } else if (msg.type === "progress") {
+        emit({ bytesSent: msg.bytes });
       } else if (msg.type === "error") {
         emit({ errorText: msg.message });
       } else if (msg.type === "ffmpeg") {

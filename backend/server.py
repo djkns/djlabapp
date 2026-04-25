@@ -379,9 +379,6 @@ async def list_mixes():
     return docs
 
 
-app.include_router(api_router)
-
-
 # -------------------- LIVE STREAM RELAY (Icecast / AzuraCast) --------------------
 #
 # Pipeline:
@@ -486,7 +483,26 @@ async def stream_ws(ws: WebSocket):
         return
 
     _active_streams[stream_id] = proc
+    # Send a sanitized diagnostic so the user can confirm the target URL is
+    # correct without leaking the password.
+    safe_url = f"icecast://{effective_user}:****@{host}:{port}{mount if mount.startswith('/') else '/' + mount}"
     await ws.send_json({"type": "connected", "stream_id": stream_id})
+    await ws.send_json({"type": "info", "message": f"ffmpeg launched, target: {safe_url} ({protocol}, {bitrate}kbps)"})
+
+    # Catch early ffmpeg crashes (wrong creds, host unreachable, etc.) so the
+    # client gets a useful error instead of just a silent disconnect.
+    async def watch_for_early_exit():
+        await asyncio.sleep(2)
+        if proc.poll() is not None:
+            try:
+                await ws.send_json({
+                    "type": "error",
+                    "message": f"ffmpeg exited early (code {proc.returncode}). See ffmpeg log above for the cause.",
+                })
+                await ws.close(code=1011)
+            except Exception:
+                pass
+    early_exit_task = asyncio.create_task(watch_for_early_exit())
 
     async def pump_stderr():
         """Forward ffmpeg errors back to the client so they can debug."""
@@ -503,6 +519,8 @@ async def stream_ws(ws: WebSocket):
                 break
 
     stderr_task = asyncio.create_task(pump_stderr())
+    bytes_in = 0
+    last_progress = asyncio.get_event_loop().time()
 
     try:
         while True:
@@ -513,8 +531,13 @@ async def stream_ws(ws: WebSocket):
             if data and proc.stdin:
                 try:
                     await asyncio.to_thread(proc.stdin.write, data)
+                    bytes_in += len(data)
+                    now = asyncio.get_event_loop().time()
+                    if now - last_progress > 5:
+                        await ws.send_json({"type": "progress", "bytes": bytes_in})
+                        last_progress = now
                 except BrokenPipeError:
-                    await ws.send_json({"type": "error", "message": "ffmpeg closed the pipe — check server creds"})
+                    await ws.send_json({"type": "error", "message": "ffmpeg closed the pipe — check server creds, host, port"})
                     break
             elif msg.get("text"):
                 try:
@@ -525,6 +548,7 @@ async def stream_ws(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        early_exit_task.cancel()
         stderr_task.cancel()
         try:
             if proc.stdin:
@@ -546,6 +570,9 @@ async def stream_ws(ws: WebSocket):
 @api_router.get("/stream/status")
 async def stream_status():
     return {"active": len(_active_streams), "stream_ids": list(_active_streams.keys())}
+
+
+app.include_router(api_router)
 
 
 app.add_middleware(

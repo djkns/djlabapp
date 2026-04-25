@@ -160,8 +160,32 @@ export default function StreamConfigDialog({ open, onClose }) {
           </div>
         </div>
 
+        {(status.connected || status.bytesSent > 0 || status.errorText) && (
+          <div className="mt-3 flex items-center gap-2 text-[11px] font-mono-dj">
+            <span className={`px-2 py-1 rounded border ${
+              status.errorText
+                ? "border-[#FF1F1F] text-[#FF1F1F]"
+                : status.connected
+                  ? "border-[#22c55e] text-[#22c55e]"
+                  : "border-white/10 text-[#A1A1AA]"
+            }`} data-testid="stream-state">
+              {status.errorText ? "ERROR" : status.connected ? "ON AIR" : "IDLE"}
+            </span>
+            {status.bytesSent != null && (
+              <span className="text-[#A1A1AA]" data-testid="stream-bytes">
+                {(status.bytesSent / 1024).toFixed(1)} KB sent
+              </span>
+            )}
+            {status.errorText && (
+              <span className="text-[#FF1F1F] truncate" data-testid="stream-error" title={status.errorText}>
+                {status.errorText}
+              </span>
+            )}
+          </div>
+        )}
+
         {status.ffmpegLines.length > 0 && (
-          <details className="mt-3">
+          <details className="mt-3" open>
             <summary className="text-[10px] tracking-[0.2em] uppercase text-[#A1A1AA] cursor-pointer">
               ffmpeg log ({status.ffmpegLines.length})
             </summary>
