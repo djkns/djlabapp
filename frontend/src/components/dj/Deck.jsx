@@ -280,15 +280,24 @@ export default function Deck({ id, label, accent }) {
           const cur = useDJStore.getState()[id].track;
           if (cur?.key !== trackKey) return;
           if (bpm && isFinite(bpm) && bpm >= 60 && bpm <= 200) {
-            setDeck(id, { baseBPM: Math.round(bpm * 10) / 10 });
+            const rounded = Math.round(bpm * 10) / 10;
+            setDeck(id, { baseBPM: rounded });
+            toast.success(`Deck ${label}: BPM detected`, { description: `${rounded.toFixed(1)} BPM` });
             fetch(`${apiBase}/api/tracks/meta`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ key: trackKey, bpm }),
             }).catch(() => {});
+          } else {
+            toast.message(`Deck ${label}: BPM unclear`, {
+              description: `Analyzer returned ${bpm}; keeping default. Adjust manually if needed.`,
+            });
           }
         } catch (err) {
           console.warn("[bpm] detection failed", err);
+          toast.error(`Deck ${label}: BPM detection failed`, {
+            description: err?.message || "Set BPM manually if needed.",
+          });
         } finally {
           setAnalyzingBPM(false);
         }
