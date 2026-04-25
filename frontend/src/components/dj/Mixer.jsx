@@ -235,9 +235,18 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     }
     // Firefox / Safari require getUserMedia to be called synchronously inside
     // the user-gesture click handler. Resume AudioContext in parallel.
-    // DJ_MIC_CONSTRAINTS disables echoCancellation/AGC/noiseSuppression for
-    // dry, low-latency mic monitoring.
-    const micPromise = navigator.mediaDevices.getUserMedia({ audio: DJ_MIC_CONSTRAINTS });
+    // Some Firefox profiles reject explicit `false` constraint values
+    // (OverconstrainedError on echoCancellation/AGC/NS), so we try the
+    // DJ-grade strict constraints first and fall back to simple `audio: true`
+    // if that throws. Either way the gesture is preserved.
+    let micPromise = navigator.mediaDevices.getUserMedia({ audio: DJ_MIC_CONSTRAINTS })
+      .catch((err) => {
+        if (err?.name === "OverconstrainedError" || err?.name === "TypeError" || err?.name === "NotReadableError") {
+          console.warn("[mic] strict constraints rejected, falling back to audio: true", err.name);
+          return navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        throw err;
+      });
     resumeAudioContext();
     (async () => {
       try {
@@ -253,8 +262,16 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       } catch (err) {
         console.error("mic denied", err);
         setMic({ enabled: false });
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const reason =
+          err?.name === "NotAllowedError" ? "You (or the browser) blocked mic access." :
+          err?.name === "NotFoundError" ? "No microphone device found." :
+          err?.name === "NotReadableError" ? "Mic is in use by another app." :
+          err?.name === "SecurityError" ? "Browser security blocked the request (must be HTTPS)." :
+          err?.message || "Unknown error";
         toast.error("Mic access denied", {
-          description: "Grant mic permission for this exact URL in Firefox settings, then reload.",
+          description: `${reason} Make sure ${origin} is set to "Allow" in Firefox → Settings → Privacy → Microphone Permissions, then reload.`,
+          duration: 8000,
         });
       }
     })();
