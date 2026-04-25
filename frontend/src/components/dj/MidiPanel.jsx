@@ -99,11 +99,12 @@ export const MIDI_GROUPS = [
     key: "master",
     label: "Master · Headphones · Mic",
     controls: [
-      { id: "master.volume", label: "Master Volume",     kind: "unipolar" },
-      { id: "hp.volume",     label: "Headphone Volume",  kind: "unipolar" },
-      { id: "hp.mix",        label: "Headphone Mix",     kind: "unipolar" },
-      { id: "mic.enabled",   label: "Mic · Toggle",      kind: "button" },
-      { id: "mic.volume",    label: "Mic Volume",        kind: "unipolar" },
+      { id: "master.volume",   label: "Master Volume",        kind: "unipolar" },
+      { id: "hp.volume",       label: "Headphone Volume",     kind: "unipolar" },
+      { id: "hp.mix",          label: "Headphone Mix",        kind: "unipolar" },
+      { id: "hp.master",       label: "HP Master · Toggle",   kind: "button" },
+      { id: "mic.enabled",     label: "Mic · Toggle",         kind: "button" },
+      { id: "mic.volume",      label: "Mic Volume",           kind: "unipolar" },
     ],
   },
 ];

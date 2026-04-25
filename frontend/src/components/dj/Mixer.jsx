@@ -314,6 +314,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       else if (action === "master.volume") setMasterVolume(Math.max(0, Math.min(1.2, value * 1.2)));
       else if (action === "hp.volume") setHp({ volume: value });
       else if (action === "hp.mix") setHp({ mix: value });
+      else if (action === "hp.master") setHp({ masterEnabled: !useDJStore.getState().hp.masterEnabled });
       else if (action === "crossfader") useDJStore.getState().setCrossfader(Math.max(-1, Math.min(1, value)));
       else if (action === "mic.enabled") { await resumeAudioContext(); setMic({ enabled: !mic.enabled }); }
       else if (action === "mic.volume") setMic({ volume: Math.max(0, Math.min(1.2, value * 1.2)) });
