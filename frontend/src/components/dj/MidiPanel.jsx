@@ -366,11 +366,11 @@ export default function MidiPanel({ open, onClose }) {
           )}
         </div>
 
-        {/* Platter LED Feedback (controller OUT) */}
+        {/* LED Feedback (controller OUT — platter LEDs + button/pad LEDs) */}
         <div className="mb-2 p-2 rounded border border-[#00D4FF]/30 bg-[#00D4FF]/5" data-testid="led-feedback-panel">
           <div className="flex items-center justify-between mb-1.5">
             <span className="label-tiny" style={{ color: "#00D4FF" }}>
-              PLATTER LED FEEDBACK (MIDI OUT)
+              LED FEEDBACK (MIDI OUT)
             </span>
             <button
               data-testid="led-feedback-toggle"
@@ -430,7 +430,7 @@ export default function MidiPanel({ open, onClose }) {
             })}
           </div>
           <div className="text-[9px] text-[#52525B] mt-1 italic">
-            Tip: Hercules T7 default is CC 0x30 (48) on ch 1 (Deck A) / ch 2 (Deck B). If the LEDs don't move, tweak CC / CH.
+            Tip: Platter CC 0x30 (48) on ch 1/2 is the Hercules T7 default. Button & pad LEDs use whatever signature you LEARNed for that control — switch your T7 to "hot cue 1" mode before learning the pads.
           </div>
         </div>
 
