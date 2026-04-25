@@ -609,7 +609,7 @@ export default function Deck({ id, label, accent }) {
               <input
                 type="number" value={deck.baseBPM}
                 onChange={(e) => setDeck(id, { baseBPM: Math.max(40, Math.min(220, +e.target.value || 120)) })}
-                className="w-11 bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
+                className="bpm-input w-12 bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
                 data-testid={`deck-${letter}-base-bpm`} title="Base BPM"
               />
             </div>

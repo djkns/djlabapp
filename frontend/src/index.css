@@ -111,6 +111,19 @@ html, body, #root {
     );
 }
 
+/* Hide native number spinner (it covers the digits in our compact BPM field).
+   Users still tweak the value by typing — the auto-detected BPM and the
+   manual override field are both clear without arrow controls. */
+.bpm-input::-webkit-outer-spin-button,
+.bpm-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.bpm-input {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
 /* Range slider base (vertical fader).
    Modern Chrome 124+ supports vertical range inputs via writing-mode (no
    more -webkit-appearance: slider-vertical). We use appearance: none so our
