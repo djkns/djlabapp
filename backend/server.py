@@ -459,17 +459,45 @@ async def stream_ws(ws: WebSocket):
         "-ar", "44100",
         "-ac", "2",
         "-f", "mp3",
-        "-content_type", "audio/mpeg",
-        "-ice_name", station_name,
-        "-ice_genre", genre,
-        "-ice_description", description,
     ]
-    # Liquidsoap / Shoutcast source harbor uses the legacy ICY protocol, not
-    # the modern Icecast 2 HTTP PUT. AzuraCast routes DJ connections through
-    # a Liquidsoap harbor on a separate port.
+    # Two output paths:
+    #
+    #   • Shoutcast / ICY (legacy)  → ffmpeg's icecast:// protocol with
+    #     -legacy_icecast 1 + packed creds. Used for AzuraCast streamers
+    #     when the user explicitly picks Shoutcast.
+    #
+    #   • Icecast 2 (HTTP PUT)      → ffmpeg's http:// protocol with
+    #     -method PUT. Required when the AzuraCast mount is literally '/'
+    #     (the ffmpeg icecast:// plugin rejects empty mounts with
+    #     "No mountpoint specified"). HTTP PUT has no such constraint, so
+    #     this is the universal Icecast 2 path.
     if use_legacy:
-        ffmpeg_cmd += ["-legacy_icecast", "1"]
-    ffmpeg_cmd.append(url)
+        ffmpeg_cmd += [
+            "-content_type", "audio/mpeg",
+            "-ice_name", station_name,
+            "-ice_genre", genre,
+            "-ice_description", description,
+            "-legacy_icecast", "1",
+            url,
+        ]
+    else:
+        from urllib.parse import quote
+        clean_mount = mount if mount.startswith("/") else "/" + mount
+        http_url = f"http://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{int(port)}{clean_mount}"
+        ice_headers = (
+            f"Ice-Name: {station_name}\r\n"
+            f"Ice-Genre: {genre}\r\n"
+            f"Ice-Description: {description}\r\n"
+            f"Ice-Public: 1\r\n"
+        )
+        ffmpeg_cmd += [
+            "-content_type", "audio/mpeg",
+            "-method", "PUT",
+            "-auth_type", "basic",
+            "-http_persistent", "1",
+            "-headers", ice_headers,
+            http_url,
+        ]
 
     try:
         proc = await asyncio.to_thread(
