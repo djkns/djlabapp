@@ -9,7 +9,7 @@ import FXSlot from "./FXSlot";
 import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
-import { readTags } from "@/lib/mediaTags";
+import { readTags, readTagsFromUrl } from "@/lib/mediaTags";
 import { analyze as analyzeBPM, guess as guessBPM } from "web-audio-beat-detector";
 import { toast } from "sonner";
 
@@ -230,7 +230,8 @@ export default function Deck({ id, label, accent }) {
         try {
           const trackKey = track.key;
           const apiBase = process.env.REACT_APP_BACKEND_URL;
-          // 1. Cache lookup — pulls BPM AND hot_cues
+          // 1. Cache lookup — pulls BPM, hot_cues, AND ID3 tags
+          let needsTagRead = (track.source === "s3" || track.source === "demo");
           try {
             const cacheRes = await fetch(`${apiBase}/api/tracks/meta?key=${encodeURIComponent(trackKey)}`);
             if (cacheRes.ok) {
@@ -241,22 +242,61 @@ export default function Deck({ id, label, accent }) {
                 if (cached?.bpm && isFinite(cached.bpm) && cached.bpm >= 60 && cached.bpm <= 200) {
                   patch.baseBPM = Math.round(cached.bpm * 10) / 10;
                 }
+                // ID3 tags — overwrite the filename-derived defaults
+                const tagPatch = {};
+                if (cached?.title) tagPatch.name = cached.title;
+                if (cached?.artist) tagPatch.artist = cached.artist;
+                if (cached?.album) tagPatch.album = cached.album;
+                if (cached?.cover) tagPatch.cover = cached.cover;
+                if (Object.keys(tagPatch).length) {
+                  patch.track = { ...cur, ...tagPatch };
+                  needsTagRead = false; // cache had real tags
+                }
                 // Only restore cached cues if the user hasn't manually set any
-                // since the track loaded (race: cache fetch is slower than a
-                // human click). All-null = pristine.
                 const liveCues = useDJStore.getState()[id].hotCues;
                 const pristine = liveCues.every((c) => c == null);
                 if (pristine && Array.isArray(cached?.hot_cues) && cached.hot_cues.length === 8) {
                   patch.hotCues = cached.hot_cues.map((v) => (v == null ? null : Number(v)));
-                  // Mark this exact array as "already in DB" so the persist
-                  // effect doesn't write it back.
                   cuesAlreadyPersistedRef.current = { key: trackKey, json: JSON.stringify(patch.hotCues) };
                 }
                 if (Object.keys(patch).length) setDeck(id, patch);
               }
-              if (cached?.bpm) return; // BPM already cached → skip analysis
+              if (cached?.bpm && !needsTagRead) return; // both cached → skip everything
             }
-          } catch { /* network noise — fall through to analysis */ }
+          } catch { /* network noise — fall through */ }
+
+          // 1b. If S3 and tags weren't cached, read ID3 from the stream URL
+          // and persist them. Read first 256KB only (album art usually fits).
+          if (needsTagRead) {
+            try {
+              const tags = await readTagsFromUrl(playUrl);
+              if (tags && (tags.title || tags.artist || tags.picture)) {
+                const cur = useDJStore.getState()[id].track;
+                if (cur?.key === trackKey) {
+                  setDeck(id, {
+                    track: {
+                      ...cur,
+                      name: tags.title || cur.name,
+                      artist: tags.artist || cur.artist,
+                      album: tags.album || cur.album,
+                      cover: tags.picture || cur.cover,
+                    },
+                  });
+                }
+                fetch(`${apiBase}/api/tracks/meta`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    key: trackKey,
+                    title: tags.title || undefined,
+                    artist: tags.artist || undefined,
+                    album: tags.album || undefined,
+                    cover: tags.picture || undefined,
+                  }),
+                }).catch(() => {});
+              }
+            } catch { /* tag read failed — keep filename */ }
+          }
 
           // 2. Cache miss → analyze BPM. Wait for wavesurfer to finish
           // loading so we can reuse its decoded AudioBuffer (one fetch, one

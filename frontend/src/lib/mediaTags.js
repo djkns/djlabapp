@@ -33,8 +33,31 @@ export function readTags(file) {
         },
         onError: () => resolve({}),
       });
-    } catch (e) {
+    } catch {
       resolve({});
     }
   });
+}
+
+/**
+ * Read tags from a streaming URL by fetching the FIRST 256KB only and feeding
+ * that blob to jsmediatags. ID3v2 tags live in the first ~10-100KB of an MP3
+ * (including any embedded album art), so 256KB is a safe ceiling — keeps the
+ * cost low for our 1,725-track S3 library.
+ */
+export async function readTagsFromUrl(url, { rangeBytes = 262144 } = {}) {
+  try {
+    // Try a Range request first — most S3-backed proxies honor this and skip
+    // downloading the full track.
+    let resp = await fetch(url, { headers: { Range: `bytes=0-${rangeBytes - 1}` } });
+    if (!resp.ok) {
+      // Fallback: server doesn't support Range, just fetch the whole thing.
+      resp = await fetch(url);
+      if (!resp.ok) return {};
+    }
+    const blob = await resp.blob();
+    return await readTags(blob);
+  } catch {
+    return {};
+  }
 }

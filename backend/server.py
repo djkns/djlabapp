@@ -177,6 +177,8 @@ class Track(BaseModel):
     album: Optional[str] = ""
     url: Optional[str] = None
     bpm: Optional[float] = None
+    title: Optional[str] = None
+    cover: Optional[str] = None
     source: str = "demo"
 
 
@@ -198,12 +200,16 @@ class SavedMixCreate(BaseModel):
 
 
 class TrackMeta(BaseModel):
-    """Cached per-track analysis (BPM, key) and per-track user data (hot cues)."""
+    """Cached per-track analysis (BPM, key) and per-track user data (hot cues, ID3 tags)."""
     model_config = ConfigDict(extra="ignore")
     key: str
     bpm: Optional[float] = None
     musical_key: Optional[str] = None
     hot_cues: Optional[List[Optional[float]]] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    cover: Optional[str] = None  # data URL, kept short — only stored if reasonably small
     updated_at: Optional[datetime] = None
 
 
@@ -212,6 +218,10 @@ class TrackMetaUpsert(BaseModel):
     bpm: Optional[float] = None
     musical_key: Optional[str] = None
     hot_cues: Optional[List[Optional[float]]] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    cover: Optional[str] = None
 
 
 @api_router.get("/")
@@ -238,17 +248,28 @@ async def list_tracks(source: Optional[str] = Query(None, description="'s3' | 'd
     if source in (None, "demo"):
         result.extend(DEMO_TRACKS)
 
-    # Inline cached BPMs (one round-trip)
-    keys = [t["key"] for t in result if not t.get("bpm")]
+    # Inline cached BPM + tags (one round-trip)
+    keys = [t["key"] for t in result if not t.get("bpm") or not t.get("artist")]
     if keys:
         cached = await db.track_meta.find(
             {"key": {"$in": keys}},
-            {"_id": 0, "key": 1, "bpm": 1},
+            {"_id": 0, "key": 1, "bpm": 1, "title": 1, "artist": 1, "album": 1, "cover": 1},
         ).to_list(len(keys))
-        bpm_by_key = {c["key"]: c.get("bpm") for c in cached}
+        by_key = {c["key"]: c for c in cached}
         for t in result:
-            if not t.get("bpm") and bpm_by_key.get(t["key"]) is not None:
-                t["bpm"] = bpm_by_key[t["key"]]
+            c = by_key.get(t["key"])
+            if not c:
+                continue
+            if not t.get("bpm") and c.get("bpm") is not None:
+                t["bpm"] = c["bpm"]
+            if c.get("title"):
+                t["title"] = c["title"]
+            if c.get("artist"):
+                t["artist"] = c["artist"]
+            if c.get("album"):
+                t["album"] = c["album"]
+            if c.get("cover"):
+                t["cover"] = c["cover"]
     return result
 
 
@@ -277,6 +298,17 @@ async def upsert_track_meta(payload: TrackMetaUpsert):
         while len(cues) < 8:
             cues.append(None)
         update["hot_cues"] = [None if c is None else round(max(0.0, float(c)), 3) for c in cues]
+    if payload.title is not None:
+        update["title"] = payload.title[:200] or None
+    if payload.artist is not None:
+        update["artist"] = payload.artist[:200] or None
+    if payload.album is not None:
+        update["album"] = payload.album[:200] or None
+    if payload.cover is not None:
+        # Only store small album art (≤ 500KB data URL = ~370KB binary).
+        # Larger covers are dropped silently — re-read on next load.
+        if len(payload.cover) <= 500_000:
+            update["cover"] = payload.cover
     await db.track_meta.update_one(
         {"key": payload.key},
         {"$set": update},

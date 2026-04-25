@@ -92,10 +92,23 @@ function SpinningVinyl({
       className="relative rounded-full border-[6px] border-[#0a0a0a] shadow-2xl flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing select-none"
       style={{ width: size, height: size, background: "#050505", touchAction: "none" }}
     >
+      {/* Picture-disc background — full album art rotates underneath the
+          grooves when a cover is available, giving the deck the look of a
+          custom-printed vinyl. The grooves layer + reflection sit on top so
+          the cover doesn't compete with the texture. */}
+      {cover && (
+        <div
+          className={`absolute inset-0 rounded-full overflow-hidden ${spinClass}`}
+          style={{ transform }}
+        >
+          <img src={cover} alt="" draggable={false}
+               className="w-full h-full object-cover pointer-events-none" />
+        </div>
+      )}
       {/* grooves layer — rotates with scratch or auto-spin */}
       <div
         className={`absolute inset-0 rounded-full vinyl-grooves ${spinClass}`}
-        style={{ transform }}
+        style={{ transform, opacity: cover ? 0.55 : 1 }}
       />
       {/* reflection overlay */}
       <div className="absolute inset-0 rounded-full pointer-events-none"
@@ -103,19 +116,21 @@ function SpinningVinyl({
           background: "radial-gradient(circle at 30% 30%, rgba(255,31,31,0.08) 0%, transparent 40%)",
         }}
       />
-      {/* Center label — rotates with the grooves */}
+      {/* Center label — when cover is set we still keep a small black label
+          ring so the spindle pin reads cleanly on busy art. */}
       <div
         className={`relative rounded-full flex items-center justify-center text-white font-display font-black tracking-tight shadow-inner overflow-hidden ${spinClass}`}
         style={{
-          width: "38%",
-          height: "38%",
+          width: "32%",
+          height: "32%",
           background: cover ? "#000" : "#D10A0A",
           fontSize: size * 0.09,
           transform,
+          boxShadow: cover ? "0 0 0 2px rgba(0,0,0,0.6)" : undefined,
         }}
       >
         {cover ? (
-          <img src={cover} alt="" draggable={false} className="w-full h-full object-cover opacity-90 pointer-events-none" />
+          <Disc3 className="w-3 h-3 opacity-80" />
         ) : (
           <>
             <Disc3 className="w-4 h-4 mr-1 opacity-70" />
