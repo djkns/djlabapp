@@ -161,6 +161,7 @@ export default function TrackLibrary({ open, onToggle }) {
               rowCount={filtered.length}
               rowHeight={ROW_HEIGHT}
               rowProps={{}}
+              className="dj-scroll"
               style={{ height: containerH || 360 }}
             />
           )}

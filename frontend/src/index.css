@@ -111,9 +111,43 @@ html, body, #root {
     );
 }
 
-/* Hide native number spinner (it covers the digits in our compact BPM field).
-   Users still tweak the value by typing — the auto-detected BPM and the
-   manual override field are both clear without arrow controls. */
+/* Always-visible scrollbar for the track library and recent panels.
+   macOS + Chrome with scrollbar-width: thin auto-hides scrollbars until
+   you start scrolling — which makes our virtualised list feel broken
+   (no indicator that there's more content below). We deliberately do NOT
+   set scrollbar-width here so ::-webkit-scrollbar takes precedence and
+   forces a chunky always-visible bar in red. */
+.dj-scroll {
+    scrollbar-color: #FF1F1F #1a1a1a;
+    /* Reserve space for the scrollbar so the layout doesn't shift when
+       content height changes, and force a non-overlay bar on macOS. */
+    scrollbar-gutter: stable;
+    overflow-y: scroll !important;
+}
+.dj-scroll::-webkit-scrollbar {
+    -webkit-appearance: none !important;
+    width: 14px !important;
+    height: 14px !important;
+    background: #1a1a1a;
+    display: block !important;
+}
+.dj-scroll::-webkit-scrollbar-track {
+    background: #1a1a1a;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    border-right: 1px solid rgba(0,0,0,0.4);
+}
+.dj-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #FF1F1F 0%, #D10A0A 100%);
+    border-radius: 4px;
+    border: 2px solid #1a1a1a;
+    min-height: 40px;
+    box-shadow: 0 0 6px rgba(255,31,31,0.5);
+}
+.dj-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #FF4444 0%, #FF1F1F 100%);
+}
+
+/* Hide native number spinner */
 .bpm-input::-webkit-outer-spin-button,
 .bpm-input::-webkit-inner-spin-button {
     -webkit-appearance: none;

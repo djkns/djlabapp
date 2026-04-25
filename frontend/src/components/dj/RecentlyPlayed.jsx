@@ -54,8 +54,8 @@ export default function RecentlyPlayed({ deckId, deckLabel = "A", limit = 8 }) {
         <span className="label-tiny tracking-[0.25em]">DECK {deckLabel} · RECENT</span>
         <span className="text-[9px] text-[#52525B] ml-auto">click or drag</span>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto"
-           style={{ scrollbarWidth: "thin", scrollbarColor: "#3f3f46 transparent" }}>
+      <div className="flex-1 min-h-0 overflow-y-auto dj-scroll"
+           style={{ scrollbarColor: "#FF1F1F #1a1a1a" }}>
         {items.length === 0 ? (
           <div className="text-[#52525B] text-[11px] italic px-3 py-3">
             {loading ? "Loading…" : "Nothing yet — track must play 30s to land here."}
