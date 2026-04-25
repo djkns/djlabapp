@@ -147,6 +147,10 @@ html, body, #root {
     box-shadow: 0 0 14px rgba(209,10,10,0.7);
     /* center the 36px-wide thumb on the 10px track: (10 - 36) / 2 = -13 */
     margin-left: -13px;
+    /* Hint the compositor — keeps thumb redraws on the GPU so dragging
+       feels as smooth as the horizontal crossfader. */
+    will-change: transform;
+    transform: translateZ(0);
 }
 .fader-vert::-moz-range-track {
     width: 10px;

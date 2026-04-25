@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Square, Download, FolderOpen, Gamepad2, Headphones as HpIcon } from "lucide-react";
 import { useDJStore } from "@/store/djStore";
 import {
@@ -13,7 +13,7 @@ import EQKnob from "./EQKnob";
 import SmoothSlider from "./SmoothSlider";
 
 // Thin vertical stereo VU bar driven by a deck's analyser
-function ChannelVU({ analyser, tall = false }) {
+function ChannelVUInner({ analyser, tall = false }) {
   const [level, setLevel] = useState(0);
   useEffect(() => {
     if (!analyser) return;
@@ -40,6 +40,9 @@ function ChannelVU({ analyser, tall = false }) {
     </div>
   );
 }
+// Memoized so dragging a sibling fader doesn't re-reconcile the VU on every
+// onChange tick. The analyser ref is stable across renders, so memoization is safe.
+const ChannelVU = React.memo(ChannelVUInner);
 
 // Channel strip: Gain → EQ(HIGH/MID/LOW) → Filter → Tempo fader (volume lives in its own row above the crossfader)
 function ChannelStrip({ deckId, deckLabel, chain }) {
@@ -149,7 +152,7 @@ function VolumeFader({ deckId, chain }) {
       <span className="label-tiny">VOL {letter.toUpperCase()}</span>
       <div className="flex items-end gap-1">
         <SmoothSlider
-          min={0} max={1} step={0.01}
+          min={0} max={1} step="any"
           value={volume}
           onChange={(v) => setDeck(deckId, { volume: v })}
           className="fader-vert" style={{ height: 110 }}
