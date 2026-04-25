@@ -49,12 +49,17 @@ Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Desig
 - [x] **Vertical fader modern-Chrome compatibility (FIXED 2026-02-23)**
 
 ## Fixed During This Session
-- **2026-02-24 — Wave/BPM regression: triple-fetch race + ReferenceError.** User reported the waveform area was blank on a freshly-loaded track and BPM stuck at default 120. Root cause: my BPM analyzer was issuing a 2nd `fetch(playUrl)` while wavesurfer was still streaming its own copy + the audio element was streaming a 3rd — three concurrent S3-proxy fetches occasionally caused all three to fail or stall. Plus I'd left a `wsLoaded is not defined` ReferenceError in the IIFE. Fix: declare `wsLoaded` as the wavesurfer-load promise, await it inside the analyzer, then reuse `wsRef.current.getDecodedData()` (the AudioBuffer wavesurfer already decoded) — one fetch, one decode for both peaks AND BPM. Verified: waveform renders, fresh-cache-miss BPM detected in ~3s (faster than before).
-- **2026-02-24 — Persistent hot cues per track.** `track_meta.hot_cues` schema. Race-safe restore + 600ms debounced persist. E2E verified across page reloads.
-- **2026-02-24 — BPM cache in MongoDB.** `track_meta` collection. Cache hits skip beat-detection. `/api/tracks` listing inlines cached BPMs.
-- **2026-02-24 — Auto BPM detection (P1).** `web-audio-beat-detector@8.2.36` runs on track-load if cache miss.
-- **2026-02-24 — Reverted stacked beat-grid (user preference).**
-- **2026-02-24 — Vertical fader look/feel matched to crossfader.**
+- **2026-02-25 — Icecast/AzuraCast streaming finally works (RCA fix).** Five bugs uncovered and fixed in sequence:
+  1. **`ffmpeg` was not installed** in the container — installed v5.1.8 with libmp3lame/libopus/librtmp.
+  2. **`/api/stream/status` route registered AFTER `app.include_router(api_router)`** — FastAPI silently ignored it. Reordered so all routes (including streaming) are added before include.
+  3. **Diagnostics added** — sanitized target URL, byte counter, ffmpeg stderr passthrough, friendly 401/404/connection-refused/DNS messages, early-exit watcher catches ffmpeg crashes within 2s.
+  4. **Always pack creds + use `-legacy_icecast 1` unless user explicitly picks Icecast 2** — solves stale-config edge cases.
+  5. **Icecast 2 mode now uses `http://` HTTP PUT instead of `icecast://`** — ffmpeg's icecast:// plugin rejects empty mounts ("No mountpoint specified"), but AzuraCast's default streamer mount is literally `/`. Switched to `-method PUT -auth_type basic -content_type audio/mpeg` with `Ice-*` headers. User confirmed end-to-end stream live.
+- **2026-02-25 — LED feedback for all controller buttons.** `LedFeedback.jsx` mirrors play/PFL/keylock/loop/FX/hot-cues/HP/mic state to the controller via the same MIDI signature each control was learned with. 5 new MIDI-mappable controls added (keylock × 2, loop × 2, hp.enabled).
+- **2026-02-25 — T7-style HP MASTER button.** Cyan-glow toggle in HP column gates master mix into headphone path (matches T7 hardware behavior).
+- **2026-02-24 — Persistent BPM + hot cues per track in MongoDB.** `track_meta` collection. Cache hits skip beat-detection. Hot cues survive page reload.
+- **2026-02-24 — Auto BPM detection.** `web-audio-beat-detector` dual-algorithm (`analyze` + `guess`) with toast feedback.
+- **2026-02-24 — Knob/fader bouncing fixed.** Reverted to simple controlled pattern. Faders restyled to match crossfader. `latencyHint: "interactive"` + DJ-grade mic constraints.
 - **2026-02-24 — Knob / fader bouncing (P0).** Reverted `EQKnob.jsx` and `SmoothSlider.jsx` to the simple fully-controlled `value` + `onChange` pattern. The previous hybrid (rAF throttling + `localValue` + `onChangeRef` for knobs; `defaultValue` + `useEffect` imperative-sync for sliders) was fighting React's render cycle and causing visible thumb bounce. Verified in-browser: MID EQ knob rotates smoothly, VOL A fader tracks from 0.8→1.0 without snap-back, crossfader reaches 0.72 from center without bounce.
 - **2026-02-23 — Vertical fader rendering in Chrome 124+.** Chrome 124+ removed `-webkit-appearance: slider-vertical`. Replaced with W3C standard `writing-mode: vertical-lr; direction: rtl; appearance: auto`. Verified click/drag working top→bottom.
 - **2026-02-23 — Badge clearance.** Added `pb-24` bottom padding on main + `pb-20` on mixer scroll area; moved "Part of the NU Vibe Network" footer to bottom-left so it doesn't collide with Emergent preview badge.
