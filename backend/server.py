@@ -506,6 +506,9 @@ async def stream_ws(ws: WebSocket):
 
     async def pump_stderr():
         """Forward ffmpeg errors back to the client so they can debug."""
+        # Friendly translations of common ffmpeg/Icecast errors. The exact
+        # ffmpeg messages aren't always self-explanatory to a non-engineer.
+        friendly_hint = None
         while proc.poll() is None:
             try:
                 line = await asyncio.to_thread(proc.stderr.readline)
@@ -513,10 +516,32 @@ async def stream_ws(ws: WebSocket):
                 break
             if not line:
                 break
+            text = line.decode("utf-8", "replace").strip()
             try:
-                await ws.send_json({"type": "ffmpeg", "message": line.decode("utf-8", "replace").strip()})
+                await ws.send_json({"type": "ffmpeg", "message": text})
             except Exception:
                 break
+            # Detect common AzuraCast / Icecast failure modes and surface a
+            # clear hint so the user doesn't have to grok the log.
+            if friendly_hint is None:
+                if "401" in text or "Unauthorized" in text or "Authentication" in text.lower():
+                    friendly_hint = ("Server rejected your credentials (401). Double-check the DJ "
+                                     "username + password in AzuraCast → Streamers.")
+                elif "404" in text and "Not Found" in text:
+                    friendly_hint = ("Server returned 404 — the port + mount you're using doesn't accept "
+                                     "source connections. In AzuraCast → Streamers, find the 'DJ source "
+                                     "connection' details (the port is typically NOT the listener port). "
+                                     "Try mount '/radio' (no '.mp3').")
+                elif "Connection refused" in text or "No route to host" in text or "timed out" in text.lower():
+                    friendly_hint = ("Can't reach the server. Hostname / port might be wrong, or the server "
+                                     "is down. Try pinging the host or check the AzuraCast public address.")
+                elif "Name or service not known" in text or "getaddrinfo" in text:
+                    friendly_hint = ("Hostname doesn't resolve. Check the spelling.")
+                if friendly_hint:
+                    try:
+                        await ws.send_json({"type": "error", "message": friendly_hint})
+                    except Exception:
+                        pass
 
     stderr_task = asyncio.create_task(pump_stderr())
     bytes_in = 0
