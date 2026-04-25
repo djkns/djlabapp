@@ -162,11 +162,14 @@ export const useDJStore = create(
       name: "djlab-store-v2",
       storage: createJSONStorage(() => throttledLocalStorage),
       partialize: (s) => ({
-        // Only persist user preferences; NOT live state (track, playing, currentTime)
+        // Only persist user preferences; NOT live state (track, playing, currentTime, baseBPM).
+        // baseBPM is per-track — restored from MongoDB cache on track-load —
+        // so persisting it across reloads would leave a stale value showing
+        // when no track is loaded.
         hp: s.hp,
         midi: { enabled: s.midi.enabled, deviceId: s.midi.deviceId, deviceName: s.midi.deviceName, mappings: s.midi.mappings, ledFeedback: s.midi.ledFeedback },
-        deckA: { baseBPM: s.deckA.baseBPM, tempoRange: s.deckA.tempoRange, volume: s.deckA.volume, eq: s.deckA.eq, trim: s.deckA.trim, filter: s.deckA.filter, keylock: s.deckA.keylock },
-        deckB: { baseBPM: s.deckB.baseBPM, tempoRange: s.deckB.tempoRange, volume: s.deckB.volume, eq: s.deckB.eq, trim: s.deckB.trim, filter: s.deckB.filter, keylock: s.deckB.keylock },
+        deckA: { tempoRange: s.deckA.tempoRange, volume: s.deckA.volume, eq: s.deckA.eq, trim: s.deckA.trim, filter: s.deckA.filter, keylock: s.deckA.keylock },
+        deckB: { tempoRange: s.deckB.tempoRange, volume: s.deckB.volume, eq: s.deckB.eq, trim: s.deckB.trim, filter: s.deckB.filter, keylock: s.deckB.keylock },
       }),
       merge: (persisted, current) => ({
         ...current,
