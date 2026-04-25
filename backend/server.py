@@ -424,16 +424,19 @@ async def stream_ws(ws: WebSocket):
         await ws.close(code=1008, reason="Missing host or password")
         return
 
-    # AzuraCast / Liquidsoap harbor quirk: Shoutcast/ICY protocol has no
-    # separate username field, so per-DJ streamer accounts expect the
-    # password to be packed as "dj_username:dj_password". FFmpeg's legacy
-    # icecast mode only uses the password from the URL, ignoring the user
-    # part, so we merge them server-side.
+    # AzuraCast / Liquidsoap harbor quirk: per-DJ accounts use Shoutcast/ICY
+    # auth where the username is packed INTO the password as "user:password"
+    # and the URL username is "source". We always do this when:
+    #   - user is provided AND not literally "source", AND
+    #   - the user explicitly picked Shoutcast/ICY OR didn't pick Icecast 2.
+    # This makes the safe default work for AzuraCast without the user having
+    # to know the protocol detail.
     effective_password = password
     effective_user = user
-    if protocol == "shoutcast" and user and user != "source" and ":" not in password:
+    use_legacy = protocol != "icecast"  # default to legacy unless user opts into raw Icecast 2 PUT
+    if use_legacy and user and user != "source" and ":" not in password:
         effective_password = f"{user}:{password}"
-        effective_user = "source"  # placeholder; ffmpeg's legacy mode ignores it
+        effective_user = "source"
 
     url = _build_icecast_url(effective_user, effective_password, host, int(port), mount)
     stream_id = str(uuid.uuid4())
@@ -464,7 +467,7 @@ async def stream_ws(ws: WebSocket):
     # Liquidsoap / Shoutcast source harbor uses the legacy ICY protocol, not
     # the modern Icecast 2 HTTP PUT. AzuraCast routes DJ connections through
     # a Liquidsoap harbor on a separate port.
-    if protocol == "shoutcast":
+    if use_legacy:
         ffmpeg_cmd += ["-legacy_icecast", "1"]
     ffmpeg_cmd.append(url)
 
@@ -487,7 +490,9 @@ async def stream_ws(ws: WebSocket):
     # correct without leaking the password.
     safe_url = f"icecast://{effective_user}:****@{host}:{port}{mount if mount.startswith('/') else '/' + mount}"
     await ws.send_json({"type": "connected", "stream_id": stream_id})
-    await ws.send_json({"type": "info", "message": f"ffmpeg launched, target: {safe_url} ({protocol}, {bitrate}kbps)"})
+    mode_label = "shoutcast/ICY (legacy)" if use_legacy else "icecast2 (HTTP PUT)"
+    pack_label = "with username-packing" if effective_user != user and user else "as-is"
+    await ws.send_json({"type": "info", "message": f"ffmpeg launched, target: {safe_url} (received protocol={protocol!r}, sending as {mode_label} {pack_label}, {bitrate}kbps)"})
 
     # Catch early ffmpeg crashes (wrong creds, host unreachable, etc.) so the
     # client gets a useful error instead of just a silent disconnect.
