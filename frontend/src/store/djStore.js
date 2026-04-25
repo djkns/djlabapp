@@ -66,6 +66,7 @@ export const useDJStore = create(
       hp: {
         enabled: false,
         mix: 0.5,      // 0 = master, 1 = cue
+        masterEnabled: true, // T7-style MASTER button: toggle master into HP path
         volume: 0.8,
         sinkId: "default",
       },

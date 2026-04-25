@@ -5,7 +5,7 @@ import {
   getAudioContext, resumeAudioContext,
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, enableMicWithStream, setMicVolume,
-  enableHeadphones, setHeadphoneMix, setHeadphoneVolume,
+  enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled,
   getDeckChain, DJ_MIC_CONSTRAINTS,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
@@ -263,6 +263,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   // Headphone sync → audio engine
   useEffect(() => { setHeadphoneMix(hp.mix); }, [hp.mix]);
   useEffect(() => { setHeadphoneVolume(hp.volume); }, [hp.volume]);
+  useEffect(() => { setHeadphoneMasterEnabled(hp.masterEnabled); }, [hp.masterEnabled]);
   useEffect(() => { enableHeadphones(hp.enabled); }, [hp.enabled]);
 
   useEffect(() => {
@@ -348,6 +349,18 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             title={hp.enabled ? "Disable headphones" : "Enable headphones"}
           >
             <HpIcon className="w-3 h-3" />
+          </button>
+          <button
+            data-testid="hp-master"
+            onClick={() => setHp({ masterEnabled: !hp.masterEnabled })}
+            className={`text-[9px] font-mono-dj tracking-[0.18em] px-2 py-0.5 rounded border transition-all ${
+              hp.masterEnabled
+                ? "border-[#00D4FF]/60 text-[#00D4FF] bg-[#00D4FF]/10 shadow-[0_0_8px_#00D4FF55]"
+                : "border-white/15 text-[#52525B] hover:border-white/40 hover:text-white/80"
+            }`}
+            title="Toggle master mix into headphones (T7 MASTER button)"
+          >
+            MASTER
           </button>
           <EQKnob
             label="CUE MIX" value={hp.mix} min={0} max={1}

@@ -203,13 +203,29 @@ export function getAllDeckChains() { return deckChains; }
 
 
 // Headphone helpers
+let hpMasterEnabled = true;     // T7-style MASTER-to-HP toggle
+let hpMixCue = 0.5;             // 0 = master only, 1 = cue only
+
+function applyHpGains() {
+  const { ctx, hpCueGain, hpMasterGain } = getAudioContext();
+  const cue = hpMixCue;
+  const master = hpMasterEnabled ? (1 - hpMixCue) : 0;
+  hpCueGain.gain.setTargetAtTime(cue, ctx.currentTime, 0.02);
+  hpMasterGain.gain.setTargetAtTime(master, ctx.currentTime, 0.02);
+}
+
 export function setHeadphoneMix(value01) {
   // 0 = full master, 1 = full cue
-  const { ctx, hpCueGain, hpMasterGain } = getAudioContext();
-  const clamped = Math.max(0, Math.min(1, value01));
-  hpCueGain.gain.setTargetAtTime(clamped, ctx.currentTime, 0.02);
-  hpMasterGain.gain.setTargetAtTime(1 - clamped, ctx.currentTime, 0.02);
+  hpMixCue = Math.max(0, Math.min(1, value01));
+  applyHpGains();
 }
+
+export function setHeadphoneMasterEnabled(enabled) {
+  hpMasterEnabled = !!enabled;
+  applyHpGains();
+}
+
+export function isHeadphoneMasterEnabled() { return hpMasterEnabled; }
 
 export function setHeadphoneVolume(v) {
   const { ctx, hpGain } = getAudioContext();
