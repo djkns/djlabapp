@@ -102,13 +102,10 @@ export default function Header({
           {midi.enabled ? (midi.deviceName?.slice(0, 18) || "MIDI ON") : "MIDI"}
         </button>
 
-        <div className="flex items-center gap-2 text-[10px] tracking-[0.2em] uppercase text-[#A1A1AA]">
-          <span className={`w-2 h-2 rounded-full ${s3Configured ? "bg-[#FF1F1F] nu-glow-accent" : "bg-[#52525B]"}`} />
-          {s3Configured ? "S3 library · live" : "Demo library"}
-        </div>
-        <div className={`hidden md:flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase ${streaming ? "text-[#FF1F1F]" : "text-[#A1A1AA]"}`}>
-          <Radio className={`w-3.5 h-3.5 ${streaming ? "text-[#FF1F1F] beat-pulse" : "text-[#FF1F1F]"}`} />
-          {streaming ? "Live" : "On Air"}
+        <div className={`hidden md:flex items-center gap-1.5 text-[10px] tracking-[0.2em] uppercase ${streaming ? "text-[#FF1F1F]" : "text-[#A1A1AA]"}`}
+             title={s3Configured ? "S3 library connected" : "Demo library — configure S3 in backend/.env"}>
+          <Radio className={`w-3.5 h-3.5 ${streaming ? "text-[#FF1F1F] beat-pulse" : "text-[#52525B]"}`} />
+          {streaming ? "On Air" : "Off Air"}
         </div>
       </div>
     </header>
