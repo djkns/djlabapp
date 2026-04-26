@@ -781,13 +781,13 @@ export default function Deck({ id, label, accent }) {
       </div>
 
       {/* Waveform — scrolling with centered playhead */}
-      <div className="relative rounded overflow-hidden border border-white/10 h-[200px]"
+      <div className="relative rounded overflow-hidden border border-white/10"
            style={{
              background:
                "repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 40px), " +
                "linear-gradient(180deg, #050505 0%, #0b0b0b 50%, #050505 100%)",
            }}>
-        <div ref={waveRef} data-testid={`deck-${letter}-waveform`} className="absolute inset-0" />
+        <div ref={waveRef} data-testid={`deck-${letter}-waveform`} className="h-[80px]" />
         {/* Centered playhead */}
         <div className="absolute top-0 bottom-0 left-1/2 pointer-events-none z-10"
              style={{
