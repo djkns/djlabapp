@@ -148,14 +148,14 @@ function VolumeFader({ deckId, chain }) {
   const liveChain = chain || getDeckChain(deckId);
   useEffect(() => { liveChain?.setVolume?.(volume); }, [liveChain, volume]);
   return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="label-tiny">VOL {letter.toUpperCase()}</span>
-      <div className="flex items-end gap-1">
+    <div className="flex flex-col items-center gap-1 flex-1 min-h-0">
+      <span className="label-tiny shrink-0">VOL {letter.toUpperCase()}</span>
+      <div className="flex items-stretch gap-1 flex-1 min-h-0 w-full justify-center">
         <SmoothSlider
           min={0} max={1} step="any"
           value={volume}
           onChange={(v) => setDeck(deckId, { volume: v })}
-          className="fader-vert" style={{ height: 110 }}
+          className="fader-vert h-full"
           testid={`channel-${letter}-volume`}
         />
         <ChannelVU analyser={chain?.analyser} />
@@ -435,8 +435,8 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         </div>
       </div>
 
-      {/* Volume faders row — VOL A | VOL B flanking center */}
-      <div className="flex items-end justify-around pt-1 border-t border-white/5" data-testid="volume-row">
+      {/* Volume faders row — VOL A | VOL B flanking center, stretches to fill */}
+      <div className="flex items-stretch justify-around pt-1 border-t border-white/5 flex-1 min-h-0" data-testid="volume-row">
         <VolumeFader deckId="deckA" chain={deckChains?.deckA} />
         <VolumeFader deckId="deckB" chain={deckChains?.deckB} />
       </div>
