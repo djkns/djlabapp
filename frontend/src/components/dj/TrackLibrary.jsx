@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Music, Search, ChevronUp, ChevronDown, Clock } from "lucide-react";
 import { List as VList } from "react-window";
 import RecentlyPlayed from "./RecentlyPlayed";
+import LibraryPrecacher from "./LibraryPrecacher";
 
 const ROW_HEIGHT = 44;
 
@@ -155,6 +156,19 @@ export default function TrackLibrary({ open, onToggle }) {
 
         {tab === "library" ? (
           <>
+            <LibraryPrecacher
+              tracks={tracks}
+              onMetaUpdated={(key, patch) => {
+                setTracks((prev) => prev.map((t) => (t.key === key ? {
+                  ...t,
+                  bpm: patch.bpm ?? t.bpm,
+                  title: patch.title ?? t.title,
+                  artist: patch.artist ?? t.artist,
+                  album: patch.album ?? t.album,
+                  cover: patch.cover ?? t.cover,
+                } : t)));
+              }}
+            />
             <div className="p-3 flex items-center gap-3 border-b border-white/5">
               <div className="relative flex-1 max-w-md">
                 <Search className="w-3.5 h-3.5 absolute top-1/2 -translate-y-1/2 left-3 text-[#52525B]" />
