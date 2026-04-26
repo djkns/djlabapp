@@ -125,9 +125,16 @@ export default function Deck({ id, label, accent }) {
       hideScrollbar: true,
       fillParent: false,
     });
+    // Surface internal errors instead of silently swallowing them. The blank
+    // waveform issue typically means an abort / CORS / decode error here that
+    // we never saw. The fallback (feeding peaks from the BPM-decoded buffer
+    // in loadTrack) covers correctness — this just makes the failure visible.
+    ws.on("error", (err) => {
+      console.error(`[ws ${id}] error`, err);
+    });
     wsRef.current = ws;
     return () => { ws.destroy(); wsRef.current = null; };
-  }, [accent]);
+  }, [accent, id]);
 
   // EQ/Volume/Filter/Trim are wired by Mixer's ChannelStrip (single source of
   // truth). Removing them from Deck means Deck doesn't re-render on those
@@ -315,6 +322,27 @@ export default function Deck({ id, label, accent }) {
             const arr = await resp.arrayBuffer();
             const ac = getAudioContext().ctx;
             buf = await ac.decodeAudioData(arr.slice(0));
+          }
+          // GUARANTEED WAVEFORM FALLBACK: if wavesurfer's own load/decode
+          // failed (network race / abort / quirky CORS), feed it the peaks
+          // we just decoded. ws.load(url, peaks, duration) skips wavesurfer's
+          // internal fetch entirely and renders directly from the data we
+          // already have. This is what fixes the recurring "blank deck
+          // window" issue regardless of root cause.
+          try {
+            const wsHas = !!wsRef.current?.getDecodedData?.();
+            const cur = useDJStore.getState()[id].track;
+            if (!wsHas && wsRef.current && cur?.key === trackKey) {
+              const peaks = [];
+              for (let i = 0; i < buf.numberOfChannels; i++) {
+                peaks.push(buf.getChannelData(i));
+              }
+              await wsRef.current.load(playUrl, peaks, buf.duration).catch((err) => {
+                console.warn(`[ws ${id}] peaks-fallback load failed`, err);
+              });
+            }
+          } catch (err) {
+            console.warn(`[ws ${id}] peaks-fallback threw`, err);
           }
           // Try the two algorithms web-audio-beat-detector ships:
           //   • analyze(buf) — returns a single tempo (occasionally falls
