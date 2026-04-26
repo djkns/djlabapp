@@ -689,7 +689,7 @@ export default function Deck({ id, label, accent }) {
       data-testid={`deck-${letter}`}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
-      className="relative flex flex-col gap-2 h-full bg-[#141414]/80 backdrop-blur-xl border border-white/10 p-3 rounded-lg"
+      className="relative flex flex-col gap-2 bg-[#141414]/80 backdrop-blur-xl border border-white/10 p-3 rounded-lg"
     >
       {/* beat-glow overlay */}
       <div
@@ -780,10 +780,8 @@ export default function Deck({ id, label, accent }) {
         </div>
       </div>
 
-      {/* Waveform — fills available vertical space; the play/cue row + hot
-          cues sit pinned to the bottom via mt-auto so the waveform absorbs
-          all extra height as the viewport grows. */}
-      <div className="relative rounded overflow-hidden border border-white/10 flex-1 min-h-[140px]"
+      {/* Waveform — scrolling with centered playhead */}
+      <div className="relative rounded overflow-hidden border border-white/10 h-[200px]"
            style={{
              background:
                "repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 40px), " +
