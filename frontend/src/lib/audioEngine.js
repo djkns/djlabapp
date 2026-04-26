@@ -32,11 +32,12 @@ let hpSinkId = "default";
 export function getAudioContext() {
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext;
-    // 'interactive' asks the browser for the smallest output buffer it can
-    // provide — on most hardware this drops output latency to ~10–20ms vs the
-    // ~25-50ms default. Critical for DJ feel: every fader/knob/scratch lands
-    // sooner. Trade-off: slightly higher CPU; acceptable for our use case.
-    ctx = new AC({ latencyHint: "interactive" });
+    // Use browser default latency. We tried `latencyHint: "interactive"`
+    // earlier to get sub-20ms output, but it requested such a small buffer
+    // that audio callbacks were starving the main thread and making knobs/
+    // faders feel laggy during drag. Default ("balanced") is the sweet spot
+    // for a UI-heavy DJ app that drives a hardware controller.
+    ctx = new AC();
 
     masterGain = ctx.createGain();
     masterGain.gain.value = 1.0;
