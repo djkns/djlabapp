@@ -206,6 +206,71 @@ export default function Deck({ id, label, accent }) {
     }
   }, [id, setDeck]);
 
+  // --- Waveform drag-to-scrub (Rekordbox-style) ----------------------------
+  // Pixels-per-second matches WaveSurfer's `minPxPerSec` config (120).
+  // Centered-playhead model: pulling the waveform RIGHT shows earlier audio
+  // under the playhead → seek BACKWARD. So delta = -dx / pxPerSec.
+  const WAVE_PX_PER_SEC = 120;
+  const scrubRef = useRef({ active: false, startX: 0, baseTime: 0, wasPlaying: false, moved: false });
+
+  const onWaveDragStart = useCallback((e) => {
+    // Skip if click started on a marker (markers have their own click handlers).
+    // Use composedPath because markers live inside wavesurfer's shadow DOM.
+    const path = e.composedPath?.() || [];
+    for (const node of path) {
+      const tid = node?.dataset?.testid;
+      if (tid && tid.includes("-marker-")) return;
+    }
+
+    const el = audioElRef.current;
+    if (!el || !useDJStore.getState()[id].track) return;
+    const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    scrubRef.current = {
+      active: true,
+      startX: x,
+      baseTime: el.currentTime || 0,
+      wasPlaying: !el.paused,
+      moved: false,
+    };
+    try { el.pause(); } catch { /* noop */ }
+  }, [id]);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const s = scrubRef.current;
+      if (!s.active) return;
+      const el = audioElRef.current;
+      if (!el) return;
+      const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+      const dx = x - s.startX;
+      if (Math.abs(dx) > 2) s.moved = true;
+      const deltaSec = -dx / WAVE_PX_PER_SEC;
+      const dur = el.duration || 0;
+      const next = Math.max(0, Math.min(dur - 0.05, s.baseTime + deltaSec));
+      try { el.currentTime = next; } catch { /* noop */ }
+      setDeck(id, { currentTime: next });
+    };
+    const onUp = () => {
+      const s = scrubRef.current;
+      if (!s.active) return;
+      s.active = false;
+      const el = audioElRef.current;
+      if (el && s.wasPlaying) {
+        el.play().then(() => setDeck(id, { playing: true })).catch(() => {});
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove);
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, [id, setDeck]);
+
   // Load track
   const loadTrack = useCallback(async (track) => {
     if (!track) return;
@@ -748,8 +813,11 @@ export default function Deck({ id, label, accent }) {
       </div>
 
       {/* Waveform — scrolling with centered playhead. Canvas auto-fills the
-          container so peaks render across the full deck space. */}
-      <div className="relative rounded overflow-hidden border border-white/10 h-[80px]"
+          container so peaks render across the full deck space. Drag the
+          waveform left/right to scrub through the track (Rekordbox-style). */}
+      <div className="relative rounded overflow-hidden border border-white/10 h-[80px] cursor-grab active:cursor-grabbing select-none"
+           onMouseDown={onWaveDragStart}
+           onTouchStart={onWaveDragStart}
            style={{
              background:
                "repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 40px), " +
