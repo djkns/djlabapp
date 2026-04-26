@@ -12,7 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
 import { readTags, readTagsFromUrl } from "@/lib/mediaTags";
 import { analyze as analyzeBPM, guess as guessBPM } from "web-audio-beat-detector";
-import { detectKey, labelToCamelot, camelotCompat } from "@/lib/keyDetect";
+import { detectKeyAsync, labelToCamelot, camelotCompat } from "@/lib/keyDetect";
 import { toast } from "sonner";
 
 const formatTime = (s) => {
@@ -375,11 +375,13 @@ export default function Deck({ id, label, accent }) {
           }
 
           // 3. Detect musical key from the same decoded AudioBuffer.
-          //    Skip if we already restored a cached label earlier.
+          //    Runs in a Web Worker so the FFT pass doesn't freeze knob
+          //    interactions on the main thread. Skip if a cached label was
+          //    already restored earlier.
           const liveKeyState = useDJStore.getState()[id];
           if (!liveKeyState.musicalKey && liveKeyState.track?.key === trackKey) {
             try {
-              const k = detectKey(buf);
+              const k = await detectKeyAsync(buf);
               const cur2 = useDJStore.getState()[id].track;
               if (k && cur2?.key === trackKey) {
                 setDeck(id, { musicalKey: k.label, camelot: k.camelot });

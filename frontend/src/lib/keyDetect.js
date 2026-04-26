@@ -168,6 +168,65 @@ export function detectKey(buffer, opts = {}) {
 }
 
 /**
+ * Async (Web Worker) variant of detectKey() — moves the heavy FFT off the
+ * main thread so knob/fader interactions stay smooth while a freshly loaded
+ * track is being analysed.
+ *
+ * Worker is lazily spawned and reused for the lifetime of the page; channels
+ * are transferred (zero-copy) into the worker.
+ */
+let _worker = null;
+let _msgId = 0;
+const _pending = new Map();
+
+function getWorker() {
+  if (_worker) return _worker;
+  _worker = new Worker(new URL("./keyDetect.worker.js", import.meta.url));
+  _worker.onmessage = (e) => {
+    const { id, result } = e.data || {};
+    const resolver = _pending.get(id);
+    if (resolver) {
+      _pending.delete(id);
+      resolver(result || null);
+    }
+  };
+  _worker.onerror = (err) => {
+    console.warn("[keyDetect.worker] error", err);
+  };
+  return _worker;
+}
+
+export function detectKeyAsync(buffer, opts = {}) {
+  if (!buffer || !buffer.length) return Promise.resolve(null);
+  try {
+    const numCh = buffer.numberOfChannels;
+    // Copy channel data into transferable buffers (decoded buffer is not
+    // transferable; we slice() to detach a fresh ArrayBuffer for transfer).
+    const channels = [];
+    const transfer = [];
+    for (let i = 0; i < Math.min(numCh, 2); i++) {
+      const src = buffer.getChannelData(i);
+      const copy = new Float32Array(src);  // detached owner copy
+      channels.push(copy);
+      transfer.push(copy.buffer);
+    }
+    const w = getWorker();
+    const id = ++_msgId;
+    return new Promise((resolve) => {
+      _pending.set(id, resolve);
+      w.postMessage(
+        { id, channels, sampleRate: buffer.sampleRate, maxSeconds: opts.maxSeconds ?? 90 },
+        transfer
+      );
+    });
+  } catch (e) {
+    console.warn("[keyDetect] async fallback to sync", e);
+    try { return Promise.resolve(detectKey(buffer, opts)); }
+    catch { return Promise.resolve(null); }
+  }
+}
+
+/**
  * Convert a musical-key label like "F#m" or "C" to its Camelot code.
  * Returns null if the label is unparseable.
  */
