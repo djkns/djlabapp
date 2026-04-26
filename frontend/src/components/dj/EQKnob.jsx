@@ -1,17 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 /**
- * Rotary EQ knob. Fully controlled — `value` prop drives visuals, mousemove
- * calls `onChange` directly. No local state, no rAF, no onChange-ref: the
- * simplest pattern that holds up under rapid dragging without fighting
- * React's render cycle.
+ * Rotary EQ knob. Visuals are driven by the controlled `value` prop, but the
+ * mouse-drag listener is attached ONCE per drag (not re-attached on every
+ * mousemove tick) by routing onChange through a ref. This avoids the
+ * cleanup/setup churn that was making knobs lag behind the cursor when the
+ * parent passed a fresh inline `onChange` on every render.
  *
  * Drag vertically to turn. Double-click to reset to 0.
  */
-export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#D10A0A", size = 48 }) {
+function EQKnobImpl({ value = 0, min = -12, max = 12, onChange, label, testid, color = "#D10A0A", size = 48 }) {
   const ref = useRef(null);
   const [dragging, setDragging] = useState(false);
   const startRef = useRef({ y: 0, v: 0 });
+
+  // Keep onChange in a ref so the drag effect does NOT depend on it. Parent
+  // components routinely pass a fresh arrow each render; without this ref the
+  // mousemove listener would be removed and re-added 60+ times per second.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
 
   const range = max - min;
   // map value -> angle -135..+135
@@ -25,7 +32,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       // Sensitivity: 60px to span the full range. Quick wrist flick spans
       // the full sweep; fine control still works for small movements.
       const next = Math.max(min, Math.min(max, startRef.current.v + dy * (range / 60)));
-      onChange?.(next);
+      onChangeRef.current?.(next);
     };
     const onUp = () => setDragging(false);
     window.addEventListener("mousemove", onMove);
@@ -38,7 +45,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
     };
-  }, [dragging, min, max, onChange, range]);
+  }, [dragging, min, max, range]);
 
   const startDrag = (e) => {
     const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
@@ -93,3 +100,7 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
     </div>
   );
 }
+
+// Memoize so a sibling knob's value-change re-render of the parent strip does
+// NOT re-render this knob unless its own props actually changed.
+export default memo(EQKnobImpl);

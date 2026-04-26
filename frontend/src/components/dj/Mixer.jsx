@@ -164,8 +164,26 @@ function VolumeFader({ deckId, chain }) {
   );
 }
 
-// Master VU bars (stereo)
-function MasterVU({ levels }) {
+// Master VU bars (stereo). OWNS its own rAF loop + level state so its 60Hz
+// updates DO NOT re-render the parent Mixer (which would cascade re-renders
+// to every knob and fader and visibly lag knob drags).
+function MasterVUInner() {
+  const [levels, setLevels] = useState({ l: 0, r: 0 });
+  useEffect(() => {
+    const { masterAnalyser } = getAudioContext();
+    const buf = new Uint8Array(masterAnalyser.frequencyBinCount);
+    let raf;
+    const loop = () => {
+      masterAnalyser.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+      const rms = Math.sqrt(sum / buf.length);
+      setLevels({ l: rms, r: rms });
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   const meterFill = (v) => Math.min(1, v * 3);
   return (
     <div className="flex justify-center gap-1">
@@ -181,6 +199,7 @@ function MasterVU({ levels }) {
     </div>
   );
 }
+const MasterVU = React.memo(MasterVUInner);
 
 export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOpenMidi }) {
   const masterVolume = useDJStore((s) => s.masterVolume);
@@ -197,7 +216,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   const elapsedRef = useRef(0);
   const intervalRef = useRef(null);
   const lastRecordingRef = useRef({ blob: null, duration: 0 });
-  const [levels, setLevels] = useState({ l: 0, r: 0 });
 
   useEffect(() => {
     const applyCrossfade = () => {
@@ -283,22 +301,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   useEffect(() => { setHeadphoneMasterEnabled(hp.masterEnabled); }, [hp.masterEnabled]);
   useEffect(() => { enableHeadphones(hp.enabled); }, [hp.enabled]);
 
-  useEffect(() => {
-    const { masterAnalyser } = getAudioContext();
-    const buf = new Uint8Array(masterAnalyser.frequencyBinCount);
-    let raf;
-    const loop = () => {
-      masterAnalyser.getByteTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-      const rms = Math.sqrt(sum / buf.length);
-      setLevels({ l: rms, r: rms });
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
   const start = async () => {
     await resumeAudioContext();
     elapsedRef.current = 0; setElapsed(0);
@@ -346,7 +348,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     const m = Math.floor(s / 60); const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
-  const meterFill = (v) => Math.min(1, v * 3);
 
   return (
     <div data-testid="mixer"
@@ -408,7 +409,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             testid="master-volume"
             color="#FF1F1F"
           />
-          <MasterVU levels={levels} />
+          <MasterVU />
 
           {/* Mic section */}
           <div className="flex flex-col items-center gap-0.5 mt-1 pt-1 border-t border-white/10 w-full">
