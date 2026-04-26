@@ -34,8 +34,6 @@ export default function Deck({ id, label, accent }) {
   const deck = useDJStore(useShallow((s) => ({
     track: s[id].track,
     playing: s[id].playing,
-    currentTime: s[id].currentTime,
-    duration: s[id].duration,
     baseBPM: s[id].baseBPM,
     tempoPct: s[id].tempoPct,
     tempoRange: s[id].tempoRange,
@@ -43,15 +41,10 @@ export default function Deck({ id, label, accent }) {
     pflOn: s[id].pflOn,
     cuePoint: s[id].cuePoint,
     hotCues: s[id].hotCues,
-    musicalKey: s[id].musicalKey,
-    camelot: s[id].camelot,
   })));
-  const otherDeck = useDJStore(useShallow((s) => ({
-    track: id === "deckA" ? s.deckB.track : s.deckA.track,
-    currentBPM: (id === "deckA" ? s.deckB : s.deckA).baseBPM *
-                (1 + (id === "deckA" ? s.deckB : s.deckA).tempoPct / 100),
-    camelot: id === "deckA" ? s.deckB.camelot : s.deckA.camelot,
-  })));
+  // currentTime / duration tick 4×/sec — isolated into a memoized sub-component
+  // (DeckTimeReadout) so the full Deck tree (knobs/faders/FX) doesn't reconcile
+  // on every playback tick. Same for cross-deck key/BPM compatibility.
   const setDeck = useDJStore((s) => s.setDeck);
   const setLoop = useDJStore((s) => s.setLoop);
   const setDeckEQ = useDJStore((s) => s.setDeckEQ);
@@ -459,17 +452,26 @@ export default function Deck({ id, label, accent }) {
     const trackKey = deck.track?.key;
     if (!trackKey || trackKey.startsWith("local-") || trackKey.startsWith("drop-")) return;
     if (playedMarkedRef.current === trackKey) return;
-    if (!deck.playing || (deck.currentTime || 0) < 30) return;
-    playedMarkedRef.current = trackKey;
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/played`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: trackKey, deck: id === "deckA" ? "A" : "B" }),
-    })
-      .then(() => window.dispatchEvent(new CustomEvent("dj:track-played",
-        { detail: { key: trackKey, deck: id === "deckA" ? "A" : "B" } })))
-      .catch(() => {});
-  }, [deck.track?.key, deck.playing, deck.currentTime]);
+    if (!deck.playing) return;
+    // Poll currentTimeRef every 1s — once we cross 30s, mark and stop polling.
+    // Using a ref instead of subscribing to currentTime keeps the Deck tree
+    // out of the per-tick reconciliation path, so knob/fader drags stay smooth.
+    const t = setInterval(() => {
+      if (playedMarkedRef.current === trackKey) { clearInterval(t); return; }
+      if ((currentTimeRef.current || 0) < 30) return;
+      playedMarkedRef.current = trackKey;
+      clearInterval(t);
+      fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks/played`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: trackKey, deck: id === "deckA" ? "A" : "B" }),
+      })
+        .then(() => window.dispatchEvent(new CustomEvent("dj:track-played",
+          { detail: { key: trackKey, deck: id === "deckA" ? "A" : "B" } })))
+        .catch(() => {});
+    }, 1000);
+    return () => clearInterval(t);
+  }, [deck.track?.key, deck.playing, id]);
 
   // Persist hot cues to MongoDB whenever they change. Debounced 600ms so
   // (their key is a one-off `local-<timestamp>` so caching them is pointless).
@@ -535,8 +537,13 @@ export default function Deck({ id, label, accent }) {
   const setCueHere = () => setDeck(id, { cuePoint: audioElRef.current.currentTime });
 
   const sync = () => {
-    if (!otherDeck?.track || !deck.baseBPM) return;
-    const otherCurrent = otherDeck.currentBPM;
+    // Read the OTHER deck fresh from the store at click-time — avoids
+    // subscribing the Deck shell to cross-deck state (which would re-render
+    // every Deck on every tempo nudge of the other one).
+    const s = useDJStore.getState();
+    const other = id === "deckA" ? s.deckB : s.deckA;
+    if (!other?.track || !deck.baseBPM) return;
+    const otherCurrent = other.baseBPM * (1 + other.tempoPct / 100);
     if (!otherCurrent) return;
     const desiredPct = (otherCurrent / deck.baseBPM - 1) * 100;
     const clamp = Math.max(-deck.tempoRange, Math.min(deck.tempoRange, desiredPct));
@@ -665,25 +672,6 @@ export default function Deck({ id, label, accent }) {
 
   const currentBPM = deck.baseBPM ? (deck.baseBPM * (1 + deck.tempoPct / 100)).toFixed(1) : "—";
 
-  // Compatibility light vs the OTHER deck — combines BPM Δ and Camelot match.
-  // Both decks render the same status (it's a pair-wise comparison).
-  const compat = (() => {
-    if (!deck.track || !otherDeck.track) return null;
-    const aEff = deck.baseBPM * (1 + deck.tempoPct / 100);
-    const bEff = otherDeck.currentBPM;
-    const bpmDelta = aEff && bEff ? Math.abs((bEff - aEff) / aEff) * 100 : null;
-    const bpmStatus = bpmDelta == null ? null : bpmDelta <= 1 ? "harmonic" : bpmDelta <= 4 ? "energy" : "clash";
-    const keyStatus = (deck.camelot && otherDeck.camelot) ? camelotCompat(deck.camelot, otherDeck.camelot) : null;
-    const rank = { harmonic: 0, energy: 1, clash: 2 };
-    const cands = [bpmStatus, keyStatus].filter(Boolean);
-    if (!cands.length) return null;
-    return cands.reduce((w, c) => (rank[c] > rank[w] ? c : w), cands[0]);
-  })();
-  const compatColor = compat === "harmonic" ? "#22c55e"
-                    : compat === "energy"   ? "#eab308"
-                    : compat === "clash"    ? "#ef4444"
-                    : null;
-
   return (
     <div
       data-testid={`deck-${letter}`}
@@ -734,33 +722,9 @@ export default function Deck({ id, label, accent }) {
           </div>
 
           <div className="mt-1 flex items-center justify-between gap-2">
-            <span className="font-mono-dj text-[10px] text-[#A1A1AA]">
-              {formatTime(deck.currentTime)} / {formatTime(deck.duration)}
-            </span>
+            <DeckTimeReadout deckId={id} />
             <div className="flex items-center gap-1.5">
-              {/* Camelot key badge + compatibility dot vs other deck */}
-              {deck.camelot && (
-                <span
-                  data-testid={`deck-${letter}-camelot`}
-                  title={deck.musicalKey ? `Key · ${deck.musicalKey} (Camelot ${deck.camelot})` : ""}
-                  className="font-mono-dj text-[10px] px-1.5 py-0.5 rounded border tracking-wide leading-none"
-                  style={{
-                    color: "#FF1F1F",
-                    borderColor: "rgba(209,10,10,0.4)",
-                    background: "rgba(209,10,10,0.08)",
-                  }}
-                >
-                  {deck.camelot}
-                </span>
-              )}
-              {compatColor && (
-                <span
-                  data-testid={`deck-${letter}-compat`}
-                  title={`Mix vs Deck ${letter === "a" ? "B" : "A"}: ${compat?.toUpperCase()}`}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: compatColor, boxShadow: `0 0 8px ${compatColor}` }}
-                />
-              )}
+              <DeckKeyHud deckId={id} letter={letter} />
               <div className="label-tiny">BPM</div>
               <div className="font-mono-dj font-bold text-base leading-none" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
                 {currentBPM}
@@ -881,7 +845,7 @@ export default function Deck({ id, label, accent }) {
             </span>
           </div>
           <button data-testid={`deck-${letter}-sync`} onClick={sync}
-            disabled={!otherDeck?.track || !deck.track}
+            disabled={!deck.track}
             className="px-2 py-1 rounded border border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
             Sync
           </button>
@@ -906,5 +870,83 @@ export default function Deck({ id, label, accent }) {
       </div>
 
     </div>
+  );
+}
+
+/**
+ * Time readout — isolates the 4 Hz currentTime tick away from the parent
+ * Deck shell so dragging a knob/fader on one deck doesn't compete with the
+ * full Deck reconciliation on every playback tick.
+ */
+function DeckTimeReadout({ deckId }) {
+  const currentTime = useDJStore((s) => s[deckId].currentTime);
+  const duration = useDJStore((s) => s[deckId].duration);
+  return (
+    <span className="font-mono-dj text-[10px] text-[#A1A1AA]">
+      {formatTime(currentTime)} / {formatTime(duration)}
+    </span>
+  );
+}
+
+/**
+ * Camelot key badge + cross-deck compatibility light. Subscribes to BOTH
+ * decks' camelot/baseBPM/tempoPct, but in its own tiny tree so changes on
+ * the other deck don't reconcile the full Deck card with all its knobs.
+ */
+function DeckKeyHud({ deckId, letter }) {
+  const data = useDJStore(useShallow((s) => {
+    const me = s[deckId];
+    const other = deckId === "deckA" ? s.deckB : s.deckA;
+    return {
+      camelot: me.camelot,
+      musicalKey: me.musicalKey,
+      meTrack: !!me.track,
+      otherTrack: !!other.track,
+      meBPM: me.baseBPM * (1 + me.tempoPct / 100),
+      otherBPM: other.baseBPM * (1 + other.tempoPct / 100),
+      otherCamelot: other.camelot,
+    };
+  }));
+  let compat = null;
+  if (data.meTrack && data.otherTrack) {
+    const bpmDelta = data.meBPM && data.otherBPM
+      ? Math.abs((data.otherBPM - data.meBPM) / data.meBPM) * 100 : null;
+    const bpmStatus = bpmDelta == null ? null
+      : bpmDelta <= 1 ? "harmonic" : bpmDelta <= 4 ? "energy" : "clash";
+    const keyStatus = (data.camelot && data.otherCamelot)
+      ? camelotCompat(data.camelot, data.otherCamelot) : null;
+    const rank = { harmonic: 0, energy: 1, clash: 2 };
+    const cands = [bpmStatus, keyStatus].filter(Boolean);
+    if (cands.length) compat = cands.reduce((w, c) => (rank[c] > rank[w] ? c : w), cands[0]);
+  }
+  const compatColor = compat === "harmonic" ? "#22c55e"
+                    : compat === "energy"   ? "#eab308"
+                    : compat === "clash"    ? "#ef4444"
+                    : null;
+  return (
+    <>
+      {data.camelot && (
+        <span
+          data-testid={`deck-${letter}-camelot`}
+          title={data.musicalKey ? `Key · ${data.musicalKey} (Camelot ${data.camelot})` : ""}
+          className="font-mono-dj text-[10px] px-1.5 py-0.5 rounded border tracking-wide leading-none"
+          style={{
+            color: "#FF1F1F",
+            borderColor: "rgba(209,10,10,0.4)",
+            background: "rgba(209,10,10,0.08)",
+          }}
+        >
+          {data.camelot}
+        </span>
+      )}
+      {compatColor && (
+        <span
+          data-testid={`deck-${letter}-compat`}
+          title={`Mix vs Deck ${letter === "a" ? "B" : "A"}: ${compat?.toUpperCase()}`}
+          className="w-2 h-2 rounded-full"
+          style={{ background: compatColor, boxShadow: `0 0 8px ${compatColor}` }}
+        />
+      )}
+    </>
   );
 }
