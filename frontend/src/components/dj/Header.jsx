@@ -11,10 +11,10 @@ export default function Header({
   const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
   return (
     <header data-testid="app-header"
-      className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-[#0A0A0A] shrink-0">
+      className="h-12 border-b border-white/10 flex items-center justify-between px-6 bg-[#0A0A0A] shrink-0">
       <div className="flex items-center gap-3">
         <img src="/dj-lab-logo.png" alt="DJsandMCMedia"
-          className="h-14 w-14 object-contain drop-shadow-[0_0_12px_rgba(209,10,10,0.6)]" />
+          className="h-10 w-10 object-contain drop-shadow-[0_0_10px_rgba(209,10,10,0.6)]" />
         <span className="text-[11px] tracking-[0.28em] text-[#A1A1AA] uppercase font-bold">
           DJsandMCMedia
         </span>

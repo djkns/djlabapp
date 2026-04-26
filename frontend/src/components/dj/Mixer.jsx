@@ -436,7 +436,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       </div>
 
       {/* Volume faders row — VOL A | VOL B flanking center */}
-      <div className="flex items-end justify-around pt-1 border-t border-white/5" data-testid="volume-row">
+      <div className="flex items-end justify-around mt-3 pt-2 border-t border-white/5" data-testid="volume-row">
         <VolumeFader deckId="deckA" chain={deckChains?.deckA} />
         <VolumeFader deckId="deckB" chain={deckChains?.deckB} />
       </div>
