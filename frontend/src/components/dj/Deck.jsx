@@ -12,6 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
 import { readTags, readTagsFromUrl } from "@/lib/mediaTags";
 import { analyze as analyzeBPM, guess as guessBPM } from "web-audio-beat-detector";
+import { detectKey, labelToCamelot } from "@/lib/keyDetect";
 import { toast } from "sonner";
 
 const formatTime = (s) => {
@@ -222,7 +223,7 @@ export default function Deck({ id, label, accent }) {
       const wsLoaded = wsRef.current
         ? wsRef.current.load(playUrl).catch((err) => { console.warn("[ws] load failed", err); })
         : Promise.resolve();
-      setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
+      setDeck(id, { loading: false, baseBPM: track.bpm || 120, musicalKey: null, camelot: null, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
 
       // Auto-detect BPM with MongoDB cache. Flow:
       //   1. GET /api/tracks/meta?key=… → cached BPM + hot_cues, instant.
@@ -234,6 +235,7 @@ export default function Deck({ id, label, accent }) {
           const apiBase = process.env.REACT_APP_BACKEND_URL;
           // 1. Cache lookup — pulls BPM, hot_cues, AND ID3 tags
           let needsTagRead = (track.source === "s3" || track.source === "demo");
+          let bpmCached = false;
           try {
             const cacheRes = await fetch(`${apiBase}/api/tracks/meta?key=${encodeURIComponent(trackKey)}`);
             if (cacheRes.ok) {
@@ -243,6 +245,11 @@ export default function Deck({ id, label, accent }) {
                 const patch = {};
                 if (cached?.bpm && isFinite(cached.bpm) && cached.bpm >= 60 && cached.bpm <= 200) {
                   patch.baseBPM = Math.round(cached.bpm * 10) / 10;
+                  bpmCached = true;
+                }
+                if (cached?.musical_key) {
+                  patch.musicalKey = cached.musical_key;
+                  patch.camelot = labelToCamelot(cached.musical_key);
                 }
                 // ID3 tags — overwrite the filename-derived defaults
                 const tagPatch = {};
@@ -263,7 +270,7 @@ export default function Deck({ id, label, accent }) {
                 }
                 if (Object.keys(patch).length) setDeck(id, patch);
               }
-              if (cached?.bpm && !needsTagRead) return; // both cached → skip everything
+              if (cached?.bpm && cached?.musical_key && !needsTagRead) return; // BPM + key + tags all cached → skip everything
             }
           } catch { /* network noise — fall through */ }
 
@@ -327,39 +334,61 @@ export default function Deck({ id, label, accent }) {
           // 5%, otherwise prefer the one that's NOT exactly 120 (the
           // suspicious default).
           let bpm = null;
-          let analyzeBpm = null;
-          let guessBpm = null;
-          try { analyzeBpm = await analyzeBPM(buf); } catch { /* ignore */ }
-          try { const g = await guessBPM(buf); guessBpm = g?.bpm ?? null; } catch { /* ignore */ }
-          if (analyzeBpm && guessBpm) {
-            const diff = Math.abs(analyzeBpm - guessBpm) / Math.max(analyzeBpm, guessBpm);
-            if (diff < 0.05) {
-              bpm = guessBpm; // they agree → trust either, prefer guess (it's typically more stable)
-            } else if (Math.round(analyzeBpm) === 120 && Math.round(guessBpm) !== 120) {
-              bpm = guessBpm; // analyze defaulted, guess found something
-            } else if (Math.round(guessBpm) === 120 && Math.round(analyzeBpm) !== 120) {
-              bpm = analyzeBpm;
+          if (!bpmCached) {
+            let analyzeBpm = null;
+            let guessBpm = null;
+            try { analyzeBpm = await analyzeBPM(buf); } catch { /* ignore */ }
+            try { const g = await guessBPM(buf); guessBpm = g?.bpm ?? null; } catch { /* ignore */ }
+            if (analyzeBpm && guessBpm) {
+              const diff = Math.abs(analyzeBpm - guessBpm) / Math.max(analyzeBpm, guessBpm);
+              if (diff < 0.05) {
+                bpm = guessBpm; // they agree → trust either, prefer guess (it's typically more stable)
+              } else if (Math.round(analyzeBpm) === 120 && Math.round(guessBpm) !== 120) {
+                bpm = guessBpm; // analyze defaulted, guess found something
+              } else if (Math.round(guessBpm) === 120 && Math.round(analyzeBpm) !== 120) {
+                bpm = analyzeBpm;
+              } else {
+                bpm = guessBpm; // disagree — prefer guess (more reliable per testing)
+              }
             } else {
-              bpm = guessBpm; // disagree — prefer guess (more reliable per testing)
+              bpm = analyzeBpm || guessBpm;
             }
-          } else {
-            bpm = analyzeBpm || guessBpm;
+            const cur = useDJStore.getState()[id].track;
+            if (cur?.key !== trackKey) return;
+            if (bpm && isFinite(bpm) && bpm >= 60 && bpm <= 200) {
+              const rounded = Math.round(bpm * 10) / 10;
+              setDeck(id, { baseBPM: rounded });
+              toast.success(`Deck ${label}: BPM detected`, { description: `${rounded.toFixed(1)} BPM` });
+              fetch(`${apiBase}/api/tracks/meta`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ key: trackKey, bpm }),
+              }).catch(() => {});
+            } else {
+              toast.message(`Deck ${label}: BPM unclear`, {
+                description: `Analyzer returned ${bpm}; keeping default. Adjust manually if needed.`,
+              });
+            }
           }
-          const cur = useDJStore.getState()[id].track;
-          if (cur?.key !== trackKey) return;
-          if (bpm && isFinite(bpm) && bpm >= 60 && bpm <= 200) {
-            const rounded = Math.round(bpm * 10) / 10;
-            setDeck(id, { baseBPM: rounded });
-            toast.success(`Deck ${label}: BPM detected`, { description: `${rounded.toFixed(1)} BPM` });
-            fetch(`${apiBase}/api/tracks/meta`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ key: trackKey, bpm }),
-            }).catch(() => {});
-          } else {
-            toast.message(`Deck ${label}: BPM unclear`, {
-              description: `Analyzer returned ${bpm}; keeping default. Adjust manually if needed.`,
-            });
+
+          // 3. Detect musical key from the same decoded AudioBuffer.
+          //    Skip if we already restored a cached label earlier.
+          const liveKeyState = useDJStore.getState()[id];
+          if (!liveKeyState.musicalKey && liveKeyState.track?.key === trackKey) {
+            try {
+              const k = detectKey(buf);
+              const cur2 = useDJStore.getState()[id].track;
+              if (k && cur2?.key === trackKey) {
+                setDeck(id, { musicalKey: k.label, camelot: k.camelot });
+                fetch(`${apiBase}/api/tracks/meta`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ key: trackKey, musical_key: k.label }),
+                }).catch(() => {});
+              }
+            } catch (e) {
+              console.warn("[key] detection failed", e);
+            }
           }
         } catch (err) {
           console.warn("[bpm] detection failed", err);

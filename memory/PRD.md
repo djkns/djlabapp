@@ -1,90 +1,102 @@
-# DJ Lab — Product Requirements & Build Log
+# DJ Lab — Product Requirements
 
 ## Original Problem Statement
-Build a DJ Web App called "DJ Lab" — part of The NU Vibe / DJsandMCMedia ecosystem.
-Stack: React (CRA scaffold) frontend, FastAPI + MongoDB backend,
-Web Audio API engine, Wavesurfer.js waveforms, Zustand state, no auth MVP. Design: NU Vibe dark neon
-(deep black #0A0A0A, primary glow #C62800, accent glow #FF3B00), Pioneer CDJ / Hercules T7 pro layout.
+Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia ecosystem.
 
-## User Choices (captured)
-- AWS/Linode S3 for track library via **backend proxy** (Linode lacks native CORS → all S3 tracks routed through `/api/tracks/stream`).
-- Auto-list all audio in bucket/prefix.
-- Recording: WebM (Opus).
-- BPM: auto-detect with manual override (manual numeric input per deck is exposed).
-- Physical controller: **Hercules DJControl T7 / Inpulse** (WebMIDI).
+### MVP Features
+- Two decks with spinning vinyl
+- Wavesurfer.js waveforms
+- Load tracks, play/pause/cue
+- Crossfader, channel volume, 3-band EQ
+- Tempo slider with sync
+- Record mix
+- WebMIDI mapping (specifically tuned for Hercules T7)
+- S3 bucket integration for track library
+- Professional DJ aesthetic matching the hardware
+- Live streaming support to AzuraCast/Icecast
 
 ## Architecture
-- `/app/backend/server.py`
-  - `GET /api/` → app info + `s3_configured` flag
-  - `GET /api/tracks` → list merged S3 + demo tracks
-  - `GET /api/tracks/url?key=…` → returns proxy URL (CORS-safe)
-  - `GET /api/tracks/stream?key=…&source=…` → range-aware CORS-safe proxy
-  - `POST/GET /api/mixes` → persist saved mixes in MongoDB
-- `/app/frontend/src/pages/DJLab.jsx` — 3-column layout (Deck A / Mixer / Deck B), Desktop-only overlay, Track Library bottom drawer
-- `/app/frontend/src/components/dj/` — `Deck`, `Mixer`, `SpinningVinyl`, `EQKnob`, `HotCuePad`, `LoopControls`, `HeadphoneSection`, `TrackLibrary`, `Header`, `DesktopOnlyOverlay`, `MidiDispatcher`, `MidiPanel`, `SaveSetDialog`, `SavedSetsDrawer`
-- `/app/frontend/src/lib/audioEngine.js` — per-deck chain (`MediaElementSource → Trim → EQ(low/mid/high) → ColorFilter → Volume → CrossfadeGain → MasterGain → {destination, MediaStreamDestination}`), master recording via `MediaRecorder`, headphone PFL bus.
-- `/app/frontend/src/lib/midi.js` — WebMIDI wrapper. 500ms "Smarter Learn" sampler + 30ms noise debounce + PANIC button.
-- `/app/frontend/src/lib/mediaTags.js` — jsmediatags ID3 extraction (album art).
-- `/app/frontend/src/store/djStore.js` — Zustand store for decks, crossfader, recording, MIDI mappings, headphone bus state.
+- **Frontend**: React + Vite, Zustand (persisted state), TailwindCSS, `react-window`
+- **Audio**: Native HTML5 Web Audio API. `web-audio-beat-detector` for BPM. `jsmediatags` for ID3.
+- **Streaming**: Browser MediaRecorder → WebSocket → FastAPI → ffmpeg → AzuraCast/Icecast (HTTP PUT).
+- **Hardware**: WebMIDI two-way (Input + Output LEDs).
+- **Backend**: FastAPI + MongoDB
+- **Storage**: AWS S3 for track library
 
-## Implemented Features
-- [x] Two decks (A/B) with scratchable spinning vinyl + ID3 album art
-- [x] Load tracks — drag-drop, file picker, S3 track library (1,725 tracks)
-- [x] Play / Pause / Cue per deck
-- [x] Wavesurfer.js waveform per deck with click-to-scrub
-- [x] Crossfader (equal-power) with glowing trail animation
-- [x] Channel volume fader per deck (vertical)
-- [x] Trim / 3-band EQ (low/mid/high) / bipolar Color Filter per deck
-- [x] Tempo slider ±8% / toggle ±16%, live BPM display, manual base-BPM override
-- [x] Sync + Keylock
-- [x] 8 Hot Cues per deck (shift+click clears) + Auto-loops (1, 2, 4, 8, 16 beats)
-- [x] Master record → `MediaRecorder` → auto-download `.webm`
-- [x] Master VU meter (stereo), master volume fader (vertical)
-- [x] Beat-pulse glow on deck border
-- [x] Headphone PFL bus with output-device selection + mix/volume
-- [x] WebMIDI integration — smarter learn, noise debounce, PANIC
-- [x] Saved Sets dialog (MongoDB persisted)
-- [x] Desktop-only overlay at <1024px
-- [x] Hercules T7 layout parity (channel strips match physical layout)
-- [x] **Vertical fader modern-Chrome compatibility (FIXED 2026-02-23)**
+## Implemented (as of Apr 2026)
+- Two decks, picture-disc spinning vinyl
+- Wavesurfer waveforms with cue point markers
+- Crossfader, channel volume, 3-band EQ, tempo
+- Auto-BPM detection (`web-audio-beat-detector`, dual algorithm)
+- **Auto musical key detection (Krumhansl-Schmuckler) + Camelot wheel mapping**
+- **BPM + Camelot Compatibility HUD** (between header and decks; HARMONIC / ENERGY / CLASH)
+- MongoDB cache for `track_meta` (BPM, musical_key, hot_cues, ID3 tags, last_played, play_count)
+- ID3 tag reading from S3 streams (jsmediatags) with album art on vinyl
+- Library: virtualized with react-window, drag-to-deck
+- Recently Played panels (now in TrackLibrary as tabs: Library | Recent A | Recent B)
+- WebMIDI mapping with Export/Import + LED feedback for Hercules T7
+- Loop In / Loop Out discrete MIDI mappings
+- T7-style Headphone mixer (CUE MIX, MASTER button, HP VOL)
+- Mic input (with echoCancellation/AGC/NS disabled)
+- MP3/WAV recording + export
+- Icecast/AzuraCast streaming via ffmpeg subprocess
+- Compact header (h-12) — crossfader fully visible
 
-## Fixed During This Session
-- **2026-02-25 — Library workflow upgrade.** Track Library now uses `react-window@2.2.7` virtual scrolling (only ~10 of 1,725 rows in DOM at a time), a live search bar that filters by title/artist/album, and rows are draggable — drop on a deck to load. Decks accept the new `application/x-djlab-track` drag payload.
-- **2026-02-25 — RECENTLY PLAYED strip.** New `RecentlyPlayed.jsx` between the deck/mixer grid and the library toggle. Cards show album art, title, artist; hover reveals A/B quick-load buttons; cards are also draggable onto decks.
-- **2026-02-25 — Play tracking.** `Deck.jsx` posts `POST /api/tracks/played` once a track has been playing ≥ 30 seconds (per-track-key debounced via ref). Backend bumps `last_played` + `play_count` on `track_meta`. New endpoints: `POST /api/tracks/played`, `GET /api/tracks/recent?limit=N`. Refresh trigger via `dj:track-played` window event.
-- **2026-02-25 — Album art from ID3 tags.** Reads tags via `jsmediatags` (first 256KB Range request) on track-load if not cached; persists title/artist/album/cover to `track_meta`. Vinyl renders as a "picture disc" when cover is present.
-- **2026-02-25 — Icecast/AzuraCast streaming finally works (RCA fix).** ffmpeg installed; route ordering fix; `http://` HTTP PUT for Icecast 2 mode (works with mount `/`).
-- **2026-02-25 — LED feedback for all controller buttons.** `LedFeedback.jsx` mirrors play/PFL/keylock/loop/FX/hot-cues/HP/mic state via learned MIDI signatures.
-- **2026-02-25 — T7-style HP MASTER button** with Web Audio gating.
-- **2026-02-24 — Persistent BPM + hot cues, auto BPM detection (dual-algorithm), knob/fader bouncing fix, fader feel matching crossfader.**
-- **2026-02-24 — Knob / fader bouncing (P0).** Reverted `EQKnob.jsx` and `SmoothSlider.jsx` to the simple fully-controlled `value` + `onChange` pattern. The previous hybrid (rAF throttling + `localValue` + `onChangeRef` for knobs; `defaultValue` + `useEffect` imperative-sync for sliders) was fighting React's render cycle and causing visible thumb bounce. Verified in-browser: MID EQ knob rotates smoothly, VOL A fader tracks from 0.8→1.0 without snap-back, crossfader reaches 0.72 from center without bounce.
-- **2026-02-23 — Vertical fader rendering in Chrome 124+.** Chrome 124+ removed `-webkit-appearance: slider-vertical`. Replaced with W3C standard `writing-mode: vertical-lr; direction: rtl; appearance: auto`. Verified click/drag working top→bottom.
-- **2026-02-23 — Badge clearance.** Added `pb-24` bottom padding on main + `pb-20` on mixer scroll area; moved "Part of the NU Vibe Network" footer to bottom-left so it doesn't collide with Emergent preview badge.
-- **2026-02-23 — Deck re-compacted.** Deck height reduced from 516px → 349px (~32% shorter). Changes:
-  - Vinyl 120px → 84px
-  - Waveform 96px → 64px
-  - Transport/Keylock/Tempo/Load merged into single non-wrapping row
-  - Hot Cue pad buttons h-9 → h-7
-  - Hot Cues + Loop always 2-col grid (removed `md:` breakpoint that stacked at <768px)
-  - LOAD button moved inline instead of taking a separate row
-  - Meta section inlined: DECK label, source, title, artist, time, BPM all in top flex section
-  - Container padding `p-4 gap-3` → `p-3 gap-2`
-  - Stable 349px height at 1280, 1440, 1920 viewports.
+## Code Layout
+```
+/app/
+├── backend/
+│   ├── server.py          # FastAPI, S3 proxy, track_meta CRUD, ffmpeg pipe
+│   └── .env               # S3, AzuraCast creds
+└── frontend/
+    └── src/
+        ├── App.css / index.css
+        ├── lib/
+        │   ├── audioEngine.js       # Web Audio routing, FX chains
+        │   ├── midi.js              # WebMIDI wrapper
+        │   ├── mediaTags.js         # jsmediatags wrapper
+        │   ├── streamService.js     # WebSocket pipe
+        │   └── keyDetect.js         # Krumhansl-Schmuckler key detection + Camelot
+        ├── store/djStore.js          # Zustand
+        ├── components/dj/
+        │   ├── Header.jsx (h-12)
+        │   ├── BpmKeyHud.jsx        # NEW — BPM + Camelot compatibility HUD
+        │   ├── Deck.jsx
+        │   ├── Mixer.jsx
+        │   ├── TrackLibrary.jsx     # Tabs: Library / Recent A / Recent B
+        │   ├── RecentlyPlayed.jsx
+        │   ├── MidiPanel.jsx, LedFeedback.jsx, SpinningVinyl.jsx
+        │   └── ...
+        └── pages/DJLab.jsx
+```
 
-## Outstanding / Pending
-- **MIDI cross-talk (USER VERIFICATION PENDING)** — 500ms sampler + 30ms debounce + PANIC button implemented. Awaiting user confirmation with Hercules T7 / Inpulse.
-- **True reverse-scratch audio** — needs `AudioBufferSourceNode` refactor for real backward playback.
+## Roadmap
+### P1 — High value, pending
+- AzuraCast "Now Playing" metadata push (`/api/stream/metadata`)
+- FX Rack expansion (Filter Sweep, Bitcrush, Echo Out)
 
-## Backlog (Prioritized)
-### P1
-- Stacked dual-waveform beat grid (Deck A blue / Deck B red, centered playhead)
-- FX Rack (Reverb / Delay / Flanger) wired into FX1/FX2 slots
-
-### P2
-- Track Library virtual scrolling / pagination (1,725 tracks currently all in DOM)
+### P2 — Backlog
 - Pad Mode tabs (Hot Cue / Loop Roll / Sampler)
-- Cloud Export — upload recorded mixes back to `djsandmc-audio/mixes/`
-- Refactor `Deck.jsx` (split UI / playback / MIDI subscriptions)
+- Cloud export of recorded mixes back to S3 `mixes/`
+- True reverse-audio scratch (deferred — UX risk)
 
-## Build date
-2026-02-23 — Vertical fader Chrome-compat fix verified.
+### Refactoring
+- Break down `Deck.jsx` (>800 lines) — extract playback hooks
+
+## Critical Notes
+- **Audio performance**: Do NOT set `latencyHint: "interactive"` on AudioContext (causes UI lag).
+- **Streaming**: ffmpeg HTTP PUT to `/` mount point on port 8005. Don't modify packing.
+- **State flushing**: `flushDJStore()` writes localStorage immediately (no debounce) to preserve MIDI mappings on quick reloads.
+- **Scrollbars**: `index.css` overrides `::-webkit-scrollbar` — don't add `scrollbar-width: thin`.
+
+## Key API Endpoints
+- `GET /api/tracks` — S3 + Mongo cached BPM/key/tags
+- `GET /api/tracks/url` — presigned S3 URL
+- `GET/POST /api/tracks/meta` — cache CRUD (now includes `musical_key`)
+- `POST /api/tracks/played` — bumps play count and last-played per deck
+- `GET /api/tracks/recent?deck=A|B` — per-deck history
+- `WS /api/ws/stream` — live audio pipe
+
+## DB Schema
+- `mixes`: { id, name, duration, notes, tracks_used }
+- `track_meta`: { key, bpm, **musical_key**, hot_cues, title, artist, album, cover, last_played, last_played_deckA/B, play_count }

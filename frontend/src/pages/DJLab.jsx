@@ -12,6 +12,7 @@ import PlatterLEDFeedback from "@/components/dj/PlatterLEDFeedback";
 import LedFeedback from "@/components/dj/LedFeedback";
 import StreamConfigDialog from "@/components/dj/StreamConfigDialog";
 import ExportMixDialog from "@/components/dj/ExportMixDialog";
+import BpmKeyHud from "@/components/dj/BpmKeyHud";
 import { resumeAudioContext } from "@/lib/audioEngine";
 import { subscribeStreamStatus } from "@/lib/streamService";
 import { requestMidi, listMidiInputs, setActiveInput, addStateChangeListener, getActiveInputId } from "@/lib/midi";
@@ -114,6 +115,12 @@ export default function DJLab() {
           onOpenExport={() => setExportOpen(true)}
           canExport={!!lastRecording?.blob}
         />
+
+        {/* BPM + Camelot key compatibility HUD — sits below the header,
+            above the decks. Compact, read-only, never blocks a control. */}
+        <div className="px-3 pt-2 pb-1 shrink-0 flex justify-center">
+          <BpmKeyHud />
+        </div>
 
         <main className="flex-1 grid grid-cols-12 gap-3 p-3 overflow-hidden relative z-10 min-h-0"
               style={{ gridTemplateRows: "1fr" }}>

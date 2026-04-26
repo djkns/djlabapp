@@ -50,6 +50,8 @@ const defaultDeck = () => ({
   currentTime: 0,
   duration: 0,
   baseBPM: 120,
+  musicalKey: null,        // e.g. "F#m" — detected client-side, cached in Mongo
+  camelot: null,           // e.g. "11A" — derived from musicalKey
   tempoRange: 8,
   tempoPct: 0,
   keylock: false,
