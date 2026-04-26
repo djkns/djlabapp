@@ -17,30 +17,55 @@ const isJogControl = (ctrl) => ctrl.endsWith(".jog");
 
 /**
  * Listens for MIDI events globally and dispatches `dj:action` CustomEvents.
- * PURE PASS-THROUGH: no throttling, smoothing, deadzone or curve shaping.
- * What the controller sends is what the on-screen knob/fader sees, 1:1.
+ *
+ * Continuous controls (knobs, faders) are coalesced to one update per
+ * animation frame (~60Hz). The very latest value always wins — no smoothing,
+ * no curve, no deadzone. This is purely a "don't queue up more state updates
+ * than the browser can paint" guard. Critical for high-traffic faders like
+ * the Hercules T7 tempo, which can fire 200+ CC messages per second and
+ * otherwise creates a backlog where the slider keeps moving after the
+ * physical fader has stopped.
+ *
+ * Buttons and jog ticks are NOT coalesced — they fire instantly so taps and
+ * scratch ticks aren't lost.
  */
 export default function MidiDispatcher() {
   const mappings = useDJStore((s) => s.midi.mappings);
   const midiEnabled = useDJStore((s) => s.midi.enabled);
 
-  // Track last value per signature ONLY for button rising-edge detection.
-  const lastValueRef = useRef({});
+  const lastValueRef = useRef({});      // for button rising-edge
+  const pendingRef = useRef(new Map()); // ctrlId -> latest value awaiting next frame
+  const rafRef = useRef(0);
   const learningRef = useRef(null);
 
-  // Keep learningRef in sync with store (without re-binding listener)
   const learning = useDJStore((s) => s.midi.learning);
   useEffect(() => { learningRef.current = learning; }, [learning]);
 
   useEffect(() => {
     if (!midiEnabled) return;
 
-    // Build inverted map: signature -> controlId
     const invMap = {};
     Object.entries(mappings).forEach(([ctrl, m]) => { invMap[m.signature] = ctrl; });
 
+    const flush = () => {
+      rafRef.current = 0;
+      const pending = pendingRef.current;
+      if (!pending.size) return;
+      // Snapshot + clear before dispatching so a re-entrant store update
+      // can't lose values.
+      const updates = Array.from(pending.entries());
+      pending.clear();
+      for (const [ctrl, value] of updates) {
+        window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, value } }));
+      }
+    };
+
+    const queueContinuous = (ctrl, value) => {
+      pendingRef.current.set(ctrl, value);
+      if (!rafRef.current) rafRef.current = requestAnimationFrame(flush);
+    };
+
     const handler = (e) => {
-      // While learning, MidiPanel handles the event — dispatcher stays silent
       if (learningRef.current) return;
 
       const sig = midiSignature(e.detail);
@@ -52,8 +77,6 @@ export default function MidiDispatcher() {
       lastValueRef.current[sig] = data2;
 
       if (isButtonControl(ctrl)) {
-        // Rising edge: 0/idle -> >0 is a press. Treat first-ever message
-        // (lastVal === -1) as rising-edge if non-zero.
         const wasZero = lastVal <= 0;
         if (data2 > 0 && wasZero) {
           window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl } }));
@@ -62,27 +85,35 @@ export default function MidiDispatcher() {
       }
 
       if (isJogControl(ctrl)) {
-        // Relative jog encoding (offset-64): data2=64 idle; >64 forward; <64 backward.
+        // Jog ticks must NOT be coalesced — every tick is meaningful for
+        // scratch precision. Fire instantly.
         const delta = data2 - 64;
         if (delta === 0) return;
         window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, value: delta } }));
         return;
       }
 
-      // Continuous — straight linear math, no smoothing.
+      // Continuous — coalesce to next animation frame, latest wins.
       let value;
       if (ctrl === "crossfader" || ctrl.endsWith(".tempo") || ctrl.endsWith(".filter")) {
         value = ccToBipolar(data2);
       } else if (ctrl.includes(".eq.") || ctrl.endsWith(".trim")) {
-        value = ((data2 - 64) / 64) * 12; // -12..+12 dB
+        value = ((data2 - 64) / 64) * 12;
       } else {
         value = ccTo01(data2);
       }
-      window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, value } }));
+      queueContinuous(ctrl, value);
     };
 
     window.addEventListener("djlab:midi", handler);
-    return () => window.removeEventListener("djlab:midi", handler);
+    return () => {
+      window.removeEventListener("djlab:midi", handler);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+      pendingRef.current.clear();
+    };
   }, [mappings, midiEnabled]);
 
   return null;
