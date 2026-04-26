@@ -12,7 +12,6 @@ import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
 import { readTags, readTagsFromUrl } from "@/lib/mediaTags";
 import { analyze as analyzeBPM, guess as guessBPM } from "web-audio-beat-detector";
-import { detectKeyAsync, labelToCamelot, camelotCompat } from "@/lib/keyDetect";
 import { toast } from "sonner";
 
 const formatTime = (s) => {
@@ -219,7 +218,7 @@ export default function Deck({ id, label, accent }) {
       const wsLoaded = wsRef.current
         ? wsRef.current.load(playUrl).catch((err) => { console.warn("[ws] load failed", err); })
         : Promise.resolve();
-      setDeck(id, { loading: false, baseBPM: track.bpm || 120, musicalKey: null, camelot: null, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
+      setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
 
       // Auto-detect BPM with MongoDB cache. Flow:
       //   1. GET /api/tracks/meta?key=… → cached BPM + hot_cues, instant.
@@ -242,10 +241,6 @@ export default function Deck({ id, label, accent }) {
                 if (cached?.bpm && isFinite(cached.bpm) && cached.bpm >= 60 && cached.bpm <= 200) {
                   patch.baseBPM = Math.round(cached.bpm * 10) / 10;
                   bpmCached = true;
-                }
-                if (cached?.musical_key) {
-                  patch.musicalKey = cached.musical_key;
-                  patch.camelot = labelToCamelot(cached.musical_key);
                 }
                 // ID3 tags — overwrite the filename-derived defaults
                 const tagPatch = {};
@@ -364,28 +359,6 @@ export default function Deck({ id, label, accent }) {
               toast.message(`Deck ${label}: BPM unclear`, {
                 description: `Analyzer returned ${bpm}; keeping default. Adjust manually if needed.`,
               });
-            }
-          }
-
-          // 3. Detect musical key from the same decoded AudioBuffer.
-          //    Runs in a Web Worker so the FFT pass doesn't freeze knob
-          //    interactions on the main thread. Skip if a cached label was
-          //    already restored earlier.
-          const liveKeyState = useDJStore.getState()[id];
-          if (!liveKeyState.musicalKey && liveKeyState.track?.key === trackKey) {
-            try {
-              const k = await detectKeyAsync(buf);
-              const cur2 = useDJStore.getState()[id].track;
-              if (k && cur2?.key === trackKey) {
-                setDeck(id, { musicalKey: k.label, camelot: k.camelot });
-                fetch(`${apiBase}/api/tracks/meta`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ key: trackKey, musical_key: k.label }),
-                }).catch(() => {});
-              }
-            } catch (e) {
-              console.warn("[key] detection failed", e);
             }
           }
         } catch (err) {
@@ -724,7 +697,6 @@ export default function Deck({ id, label, accent }) {
           <div className="mt-1 flex items-center justify-between gap-2">
             <DeckTimeReadout deckId={id} />
             <div className="flex items-center gap-1.5">
-              <DeckKeyHud deckId={id} letter={letter} />
               <div className="label-tiny">BPM</div>
               <div className="font-mono-dj font-bold text-base leading-none" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
                 {currentBPM}
@@ -885,68 +857,5 @@ function DeckTimeReadout({ deckId }) {
     <span className="font-mono-dj text-[10px] text-[#A1A1AA]">
       {formatTime(currentTime)} / {formatTime(duration)}
     </span>
-  );
-}
-
-/**
- * Camelot key badge + cross-deck compatibility light. Subscribes to BOTH
- * decks' camelot/baseBPM/tempoPct, but in its own tiny tree so changes on
- * the other deck don't reconcile the full Deck card with all its knobs.
- */
-function DeckKeyHud({ deckId, letter }) {
-  const data = useDJStore(useShallow((s) => {
-    const me = s[deckId];
-    const other = deckId === "deckA" ? s.deckB : s.deckA;
-    return {
-      camelot: me.camelot,
-      musicalKey: me.musicalKey,
-      meTrack: !!me.track,
-      otherTrack: !!other.track,
-      meBPM: me.baseBPM * (1 + me.tempoPct / 100),
-      otherBPM: other.baseBPM * (1 + other.tempoPct / 100),
-      otherCamelot: other.camelot,
-    };
-  }));
-  let compat = null;
-  if (data.meTrack && data.otherTrack) {
-    const bpmDelta = data.meBPM && data.otherBPM
-      ? Math.abs((data.otherBPM - data.meBPM) / data.meBPM) * 100 : null;
-    const bpmStatus = bpmDelta == null ? null
-      : bpmDelta <= 1 ? "harmonic" : bpmDelta <= 4 ? "energy" : "clash";
-    const keyStatus = (data.camelot && data.otherCamelot)
-      ? camelotCompat(data.camelot, data.otherCamelot) : null;
-    const rank = { harmonic: 0, energy: 1, clash: 2 };
-    const cands = [bpmStatus, keyStatus].filter(Boolean);
-    if (cands.length) compat = cands.reduce((w, c) => (rank[c] > rank[w] ? c : w), cands[0]);
-  }
-  const compatColor = compat === "harmonic" ? "#22c55e"
-                    : compat === "energy"   ? "#eab308"
-                    : compat === "clash"    ? "#ef4444"
-                    : null;
-  return (
-    <>
-      {data.camelot && (
-        <span
-          data-testid={`deck-${letter}-camelot`}
-          title={data.musicalKey ? `Key · ${data.musicalKey} (Camelot ${data.camelot})` : ""}
-          className="font-mono-dj text-[10px] px-1.5 py-0.5 rounded border tracking-wide leading-none"
-          style={{
-            color: "#FF1F1F",
-            borderColor: "rgba(209,10,10,0.4)",
-            background: "rgba(209,10,10,0.08)",
-          }}
-        >
-          {data.camelot}
-        </span>
-      )}
-      {compatColor && (
-        <span
-          data-testid={`deck-${letter}-compat`}
-          title={`Mix vs Deck ${letter === "a" ? "B" : "A"}: ${compat?.toUpperCase()}`}
-          className="w-2 h-2 rounded-full"
-          style={{ background: compatColor, boxShadow: `0 0 8px ${compatColor}` }}
-        />
-      )}
-    </>
   );
 }
