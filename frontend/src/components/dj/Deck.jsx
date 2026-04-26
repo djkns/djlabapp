@@ -143,8 +143,36 @@ export default function Deck({ id, label, accent }) {
         toast.error(`Deck ${label}: waveform load failed`, { description: msg, duration: 6000 });
       }
     });
+
+    // Align audio start (t=0) to the centered playhead. Wavesurfer normally
+    // puts t=0 at the LEFT edge of its scroll wrapper, so when the playhead
+    // is centered the waveform's t=0 visually sits HALF A SCREEN to the left
+    // of the playhead — meaning at currentTime=0 the playhead appears
+    // 2-3 seconds AHEAD of where the music starts. Padding the scroll
+    // container by half its width on both sides lets t=0 (and t=duration)
+    // both reach center.
+    const applyCenterPadding = () => {
+      try {
+        const wrapper = ws.getWrapper?.();
+        const scroll = wrapper?.parentElement; // the .scroll element
+        if (!scroll || !waveRef.current) return;
+        const halfW = waveRef.current.clientWidth / 2;
+        scroll.style.paddingLeft = `${halfW}px`;
+        scroll.style.paddingRight = `${halfW}px`;
+      } catch { /* noop */ }
+    };
+    ws.on("ready", applyCenterPadding);
+    ws.on("redraw", applyCenterPadding);
+    // Also re-apply on container resize
+    const ro = new ResizeObserver(applyCenterPadding);
+    ro.observe(waveRef.current);
+
     wsRef.current = ws;
-    return () => { ws.destroy(); wsRef.current = null; };
+    return () => {
+      ro.disconnect();
+      ws.destroy();
+      wsRef.current = null;
+    };
   }, [accent, id, label]);
 
   // EQ/Volume/Filter/Trim are wired by Mixer's ChannelStrip (single source of
@@ -232,7 +260,12 @@ export default function Deck({ id, label, accent }) {
       wasPlaying: !el.paused,
       moved: false,
     };
-    try { el.pause(); } catch { /* noop */ }
+    // Audible scrubbing: do NOT pause. Each seek during the drag plays a
+    // brief slice of audio, which gives an old-school "search" feel. True
+    // reverse-vocal scratch isn't possible with HTML5 <audio> (would need
+    // the AudioBuffer refactor that was reverted). Forward scrub sounds
+    // close to natural; backward scrub sounds like rapid stutters.
+    // If the deck was paused, keep it paused (silent scrub like before).
   }, [id]);
 
   useEffect(() => {
@@ -254,10 +287,7 @@ export default function Deck({ id, label, accent }) {
       const s = scrubRef.current;
       if (!s.active) return;
       s.active = false;
-      const el = audioElRef.current;
-      if (el && s.wasPlaying) {
-        el.play().then(() => setDeck(id, { playing: true })).catch(() => {});
-      }
+      // We didn't pause on grab, so nothing to resume here. State is intact.
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
