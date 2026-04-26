@@ -34,7 +34,10 @@ export default function Deck({ id, label, accent }) {
     track: s[id].track,
     playing: s[id].playing,
     baseBPM: s[id].baseBPM,
-    tempoPct: s[id].tempoPct,
+    // tempoPct is intentionally NOT here — subscribing Deck to it would re-
+    // render the whole deck (vinyl + hot cues + loops + FX + waveform) on
+    // every tempo-fader tick. The two tempo readouts and the playbackRate
+    // write live in dedicated leaf components below.
     tempoRange: s[id].tempoRange,
     keylock: s[id].keylock,
     pflOn: s[id].pflOn,
@@ -143,22 +146,13 @@ export default function Deck({ id, label, accent }) {
   // PFL / headphone cue on this deck
   useEffect(() => { chainRef.current?.setCueActive(!!deck.pflOn); }, [deck.pflOn]);
 
-  // Tempo (playback rate) + keylock. Throttle playbackRate writes so rapid
-  // tempo-fader drags don't cause the HTMLMediaElement decoder to
-  // continuously re-sync (audible as clicks / hiccups during tempo moves).
-  const tempoWriteRef = useRef({ rate: 1, lastWrite: 0 });
+  // Tempo (playback rate) + keylock. Owned by <TempoRateBridge/> below so
+  // tempo-fader drags don't re-render the Deck shell. Kept the keylock
+  // wiring here since `keylock` is in the main subscription anyway.
   useEffect(() => {
     const el = audioElRef.current; if (!el) return;
-    const targetRate = 1 + deck.tempoPct / 100;
-    const delta = Math.abs(targetRate - tempoWriteRef.current.rate);
-    const now = performance.now();
-    // Write immediately if >0.5% change since last write; otherwise coalesce at 33fps
-    if (delta > 0.005 || now - tempoWriteRef.current.lastWrite > 30) {
-      el.playbackRate = targetRate;
-      tempoWriteRef.current = { rate: targetRate, lastWrite: now };
-    }
     el.preservesPitch = deck.keylock;
-  }, [deck.tempoPct, deck.keylock]);
+  }, [deck.keylock]);
 
   const getCurrentTime = () => audioElRef.current?.currentTime || 0;
   const seekTo = (sec) => {
@@ -671,8 +665,6 @@ export default function Deck({ id, label, accent }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deck.playing, deck.track, deck.hotCues, deck.tempoRange, deck.pflOn]);
 
-  const currentBPM = deck.baseBPM ? (deck.baseBPM * (1 + deck.tempoPct / 100)).toFixed(1) : "—";
-
   return (
     <div
       data-testid={`deck-${letter}`}
@@ -680,6 +672,9 @@ export default function Deck({ id, label, accent }) {
       onDrop={onDrop}
       className="relative flex flex-col gap-2 bg-[#141414]/80 backdrop-blur-xl border border-white/10 p-3 rounded-lg"
     >
+      {/* Tempo→playbackRate writer (zero DOM). Owns its own tempoPct
+          subscription so tempo drags don't re-render the Deck shell. */}
+      <TempoRateBridge deckId={id} audioElRef={audioElRef} />
       {/* beat-glow overlay */}
       <div
         className="absolute inset-0 rounded-lg pointer-events-none border-2"
@@ -727,7 +722,7 @@ export default function Deck({ id, label, accent }) {
             <div className="flex items-center gap-1.5">
               <div className="label-tiny">BPM</div>
               <div className="font-mono-dj font-bold text-base leading-none" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
-                {currentBPM}
+                <CurrentBPM deckId={id} baseBPM={deck.baseBPM} />
               </div>
               {analyzingBPM && (
                 <Activity className="w-3 h-3 text-[#FF9500] animate-pulse" data-testid={`deck-${letter}-bpm-analyzing`}
@@ -841,7 +836,7 @@ export default function Deck({ id, label, accent }) {
           <div className="flex items-center justify-between">
             <span className="label-tiny">TEMPO</span>
             <span className="font-mono-dj text-[10px] font-bold" style={{ color: accent }} data-testid={`deck-${letter}-tempo-readout`}>
-              {deck.tempoPct > 0 ? "+" : ""}{deck.tempoPct.toFixed(1)}%
+              <TempoPctReadout deckId={id} />
             </span>
           </div>
           <button data-testid={`deck-${letter}-sync`} onClick={sync}
@@ -886,4 +881,43 @@ function DeckTimeReadout({ deckId }) {
       {formatTime(currentTime)} / {formatTime(duration)}
     </span>
   );
+}
+
+/**
+ * Live BPM readout (baseBPM × tempoPct). Subscribes to tempoPct in isolation
+ * so tempo-fader drags only re-render this 1-line element, not the Deck.
+ */
+function CurrentBPM({ deckId, baseBPM }) {
+  const tempoPct = useDJStore((s) => s[deckId].tempoPct);
+  return baseBPM ? (baseBPM * (1 + tempoPct / 100)).toFixed(1) : "—";
+}
+
+/**
+ * Tempo-percent readout ("+2.4%"). Same isolation reason as CurrentBPM.
+ */
+function TempoPctReadout({ deckId }) {
+  const tempoPct = useDJStore((s) => s[deckId].tempoPct);
+  return <>{tempoPct > 0 ? "+" : ""}{tempoPct.toFixed(1)}%</>;
+}
+
+/**
+ * Writes tempoPct → audio element's playbackRate. Renders nothing.
+ * Throttled to 33fps so rapid drags don't make the HTMLMediaElement decoder
+ * stutter. Lives outside Deck's main subscription so tempo drags don't
+ * cascade re-renders into the deck shell (vinyl, hot cues, loops, FX).
+ */
+function TempoRateBridge({ deckId, audioElRef }) {
+  const tempoPct = useDJStore((s) => s[deckId].tempoPct);
+  const writeRef = useRef({ rate: 1, lastWrite: 0 });
+  useEffect(() => {
+    const el = audioElRef.current; if (!el) return;
+    const targetRate = 1 + tempoPct / 100;
+    const delta = Math.abs(targetRate - writeRef.current.rate);
+    const now = performance.now();
+    if (delta > 0.005 || now - writeRef.current.lastWrite > 30) {
+      el.playbackRate = targetRate;
+      writeRef.current = { rate: targetRate, lastWrite: now };
+    }
+  }, [tempoPct, audioElRef]);
+  return null;
 }
