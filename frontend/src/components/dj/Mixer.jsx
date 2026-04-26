@@ -266,6 +266,33 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       })();
       return;
     }
+
+    // The #1 reason mic gets blocked even when Firefox says "Allow" is that
+    // DJ Lab is running inside the Emergent preview iframe. Firefox grants
+    // mic permission to the TOP-level page, so the iframe inherits "ask"
+    // instead of "allow" — and Firefox's iframe permission UI can be hard
+    // to find. Best fix: open the app in its own tab. We surface that here
+    // as a one-click action when blocked.
+    const inIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
+    const openInOwnTab = () => {
+      try { window.open(window.location.href, "_blank", "noopener,noreferrer"); } catch { /* noop */ }
+    };
+
+    // Pre-check the permission state. If it's already 'denied', skip the
+    // getUserMedia call (which would silently no-op in some Firefox builds)
+    // and surface the iframe escape hatch up-front.
+    if (inIframe && navigator.permissions?.query) {
+      navigator.permissions.query({ name: "microphone" }).then((res) => {
+        if (res.state === "denied") {
+          toast.error("Mic blocked at browser level", {
+            description: "The browser remembered a previous block. Open DJ Lab in its own tab and the prompt will appear again.",
+            duration: 15000,
+            action: { label: "Open in own tab", onClick: openInOwnTab },
+          });
+        }
+      }).catch(() => { /* permissions API not always available, fall through */ });
+    }
+
     // Firefox / Safari require getUserMedia to be called synchronously inside
     // the user-gesture click handler. Resume AudioContext in parallel.
     // Some Firefox profiles reject explicit `false` constraint values
@@ -296,6 +323,18 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
         console.error("mic denied", err);
         setMic({ enabled: false });
         const origin = typeof window !== "undefined" ? window.location.origin : "";
+        // Most common: blocked by iframe permission policy. Give the user
+        // a one-click escape hatch — opening the app in its own tab makes
+        // the browser prompt asking for mic permission directly.
+        if (err?.name === "NotAllowedError" && inIframe) {
+          toast.error("Mic blocked by preview frame", {
+            description:
+              "The browser is blocking mic access because DJ Lab is loaded inside a preview frame. Click 'Open in own tab' below — the prompt will then appear directly.",
+            duration: 15000,
+            action: { label: "Open in own tab", onClick: openInOwnTab },
+          });
+          return;
+        }
         const reason =
           err?.name === "NotAllowedError" ? "You (or the browser) blocked mic access." :
           err?.name === "NotFoundError" ? "No microphone device found." :
@@ -303,8 +342,8 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
           err?.name === "SecurityError" ? "Browser security blocked the request (must be HTTPS)." :
           err?.message || "Unknown error";
         toast.error("Mic access denied", {
-          description: `${reason} Make sure ${origin} is set to "Allow" in Firefox → Settings → Privacy → Microphone Permissions, then reload.`,
-          duration: 8000,
+          description: `${reason} If using Firefox, set ${origin} to "Allow" in Settings → Privacy → Permissions → Microphone, then reload.`,
+          duration: 10000,
         });
       }
     })();
