@@ -17,14 +17,15 @@ const isJogControl = (ctrl) => ctrl.endsWith(".jog");
 
 /**
  * Listens for MIDI events globally and dispatches `dj:action` CustomEvents.
+ * PURE PASS-THROUGH: no throttling, smoothing, deadzone or curve shaping.
+ * What the controller sends is what the on-screen knob/fader sees, 1:1.
  */
 export default function MidiDispatcher() {
   const mappings = useDJStore((s) => s.midi.mappings);
   const midiEnabled = useDJStore((s) => s.midi.enabled);
 
-  // Track last value per signature for edge detection on buttons
+  // Track last value per signature ONLY for button rising-edge detection.
   const lastValueRef = useRef({});
-  const lastFireRef = useRef({});
   const learningRef = useRef(null);
 
   // Keep learningRef in sync with store (without re-binding listener)
@@ -48,34 +49,27 @@ export default function MidiDispatcher() {
 
       const { data2 } = e.detail;
       const lastVal = lastValueRef.current[sig] ?? -1;
-      // Drop noise: if the value hasn't changed and last fire was <30ms ago, skip
-      const lastFireTs = lastFireRef.current[sig] ?? 0;
-      const now = performance.now();
-      if (data2 === lastVal && now - lastFireTs < 30) return;
       lastValueRef.current[sig] = data2;
-      lastFireRef.current[sig] = now;
 
       if (isButtonControl(ctrl)) {
-        // Rising edge: any transition from 0/idle -> >0 is a press.
-        // Treat first-ever message (lastVal === -1) AS rising-edge if non-zero.
+        // Rising edge: 0/idle -> >0 is a press. Treat first-ever message
+        // (lastVal === -1) as rising-edge if non-zero.
         const wasZero = lastVal <= 0;
-        const nowNonZero = data2 > 0;
-        if (nowNonZero && wasZero) {
+        if (data2 > 0 && wasZero) {
           window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl } }));
         }
         return;
       }
 
       if (isJogControl(ctrl)) {
-        // Relative jog encoding (offset-64): data2=64 is idle; data2>64 = forward ticks; data2<64 = backward.
-        // Works for Hercules, Numark, Reloop, most Traktor-mapped controllers.
+        // Relative jog encoding (offset-64): data2=64 idle; >64 forward; <64 backward.
         const delta = data2 - 64;
         if (delta === 0) return;
         window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, value: delta } }));
         return;
       }
 
-      // Continuous
+      // Continuous — straight linear math, no smoothing.
       let value;
       if (ctrl === "crossfader" || ctrl.endsWith(".tempo") || ctrl.endsWith(".filter")) {
         value = ccToBipolar(data2);
