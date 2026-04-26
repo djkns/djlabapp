@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Music, Search, ChevronUp, ChevronDown, Clock } from "lucide-react";
+import { Music, Search, ChevronUp, ChevronDown, Clock, Target } from "lucide-react";
 import { List as VList } from "react-window";
+import { useDJStore } from "@/store/djStore";
 import RecentlyPlayed from "./RecentlyPlayed";
 import LibraryPrecacher from "./LibraryPrecacher";
 
 const ROW_HEIGHT = 44;
+const MATCH_TOLERANCES = [0.03, 0.06, 0.1]; // 3% / 6% / 10%
+const MATCH_LABELS = ["±3%", "±6%", "±10%"];
 
 /**
  * Virtualised track library.
  *  • Search filters live by title / artist / album (case-insensitive).
- *  • Only visible rows are rendered (react-window) — solves the 1,725-row DOM
- *    bloat that was lagging the panel + slowing fader drags.
+ *  • Match Mode (Deck A / Deck B) filters to BPM-compatible tracks for that
+ *    deck's *current* tempo (baseBPM × tempoPct). Sorted by closeness so the
+ *    best mixes float to the top.
+ *  • Only visible rows are rendered (react-window).
  *  • Each row is draggable: drop it on a Deck panel to load the track.
  */
 export default function TrackLibrary({ open, onToggle }) {
@@ -18,8 +23,22 @@ export default function TrackLibrary({ open, onToggle }) {
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("library"); // "library" | "recentA" | "recentB"
+  const [matchDeck, setMatchDeck] = useState(null); // null | "deckA" | "deckB"
+  const [tolIdx, setTolIdx] = useState(1); // index into MATCH_TOLERANCES
   const containerRef = useRef(null);
   const [containerH, setContainerH] = useState(360);
+
+  // Live BPM of each deck (baseBPM scaled by tempo pitch). Subscribing to the
+  // raw fields keeps this filter reactive: bend Deck A's tempo and the Match
+  // list re-sorts itself in real time.
+  const deckABase = useDJStore((s) => s.deckA.baseBPM);
+  const deckATempo = useDJStore((s) => s.deckA.tempoPct);
+  const deckBBase = useDJStore((s) => s.deckB.baseBPM);
+  const deckBTempo = useDJStore((s) => s.deckB.tempoPct);
+  const deckATrack = useDJStore((s) => s.deckA.track);
+  const deckBTrack = useDJStore((s) => s.deckB.track);
+  const deckABPM = deckABase * (1 + deckATempo / 100);
+  const deckBBPM = deckBBase * (1 + deckBTempo / 100);
 
   useEffect(() => {
     setLoading(true);
@@ -40,17 +59,36 @@ export default function TrackLibrary({ open, onToggle }) {
     return () => ro.disconnect();
   }, [open, tab]);
 
+  // Auto-disable Match Mode if its target deck loses its track
+  useEffect(() => {
+    if (matchDeck === "deckA" && !deckATrack) setMatchDeck(null);
+    if (matchDeck === "deckB" && !deckBTrack) setMatchDeck(null);
+  }, [matchDeck, deckATrack, deckBTrack]);
+
   const loadToDeck = (track, deckId) => {
     window.dispatchEvent(new CustomEvent("dj:load", { detail: { deckId, track } }));
   };
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
-    if (!ql) return tracks;
-    return tracks.filter((t) =>
-      (t.name + " " + (t.artist || "") + " " + (t.album || "")).toLowerCase().includes(ql)
-    );
-  }, [tracks, q]);
+    let list = ql
+      ? tracks.filter((t) =>
+          (t.name + " " + (t.artist || "") + " " + (t.album || "")).toLowerCase().includes(ql)
+        )
+      : tracks;
+
+    if (matchDeck) {
+      const target = matchDeck === "deckA" ? deckABPM : deckBBPM;
+      const tol = MATCH_TOLERANCES[tolIdx];
+      if (target && isFinite(target) && target > 0) {
+        list = list
+          .filter((t) => t.bpm && Math.abs(t.bpm - target) / target <= tol)
+          .map((t) => ({ ...t, _matchDelta: Math.abs(t.bpm - target) }))
+          .sort((a, b) => a._matchDelta - b._matchDelta);
+      }
+    }
+    return list;
+  }, [tracks, q, matchDeck, tolIdx, deckABPM, deckBBPM]);
 
   const onDragStart = (track) => (e) => {
     // Send a JSON blob the deck's onDrop handler knows how to parse.
@@ -169,6 +207,71 @@ export default function TrackLibrary({ open, onToggle }) {
                 } : t)));
               }}
             />
+            {/* Match Mode strip — filter to BPM-compatible tracks for a deck */}
+            <div
+              data-testid="match-mode"
+              className="px-3 py-2 border-b border-white/5 flex items-center gap-2 flex-wrap"
+            >
+              <Target className="w-3.5 h-3.5 text-[#00D4FF]" />
+              <span className="label-tiny text-[#A1A1AA]">MATCH</span>
+              {[
+                { id: null, label: "Off", bpm: null, sub: null, hasTrack: true },
+                { id: "deckA", label: "Deck A", bpm: deckABPM, sub: deckATrack?.name || "—", hasTrack: !!deckATrack },
+                { id: "deckB", label: "Deck B", bpm: deckBBPM, sub: deckBTrack?.name || "—", hasTrack: !!deckBTrack },
+              ].map((opt) => {
+                const active = matchDeck === opt.id;
+                const disabled = opt.id !== null && (!opt.hasTrack || !opt.bpm || !isFinite(opt.bpm));
+                return (
+                  <button
+                    key={opt.label}
+                    data-testid={`match-${opt.id || "off"}`}
+                    disabled={disabled}
+                    onClick={() => setMatchDeck(opt.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] tracking-[0.22em] uppercase font-bold transition ${
+                      active
+                        ? "border-[#00D4FF] text-[#00D4FF] bg-[#00D4FF]/10 shadow-[0_0_8px_#00D4FF55]"
+                        : disabled
+                          ? "border-white/5 text-[#52525B] cursor-not-allowed"
+                          : "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/40"
+                    }`}
+                    title={opt.id && opt.bpm ? `${opt.bpm.toFixed(1)} BPM · ${opt.sub}` : "Match disabled"}
+                  >
+                    {opt.label}
+                    {opt.id && opt.bpm ? (
+                      <span className="font-mono-dj normal-case tracking-normal text-[10px]">
+                        {opt.bpm.toFixed(0)}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+
+              {/* Tolerance selector — only meaningful when a match deck is on */}
+              <div className={`flex items-center gap-1 ml-2 transition-opacity ${matchDeck ? "opacity-100" : "opacity-30"}`}>
+                <span className="label-tiny text-[#52525B]">TOL</span>
+                {MATCH_LABELS.map((lbl, i) => (
+                  <button
+                    key={lbl}
+                    data-testid={`match-tol-${i}`}
+                    disabled={!matchDeck}
+                    onClick={() => setTolIdx(i)}
+                    className={`px-2 py-0.5 rounded border text-[10px] font-mono-dj transition ${
+                      tolIdx === i && matchDeck
+                        ? "border-[#00D4FF]/60 text-[#00D4FF] bg-[#00D4FF]/10"
+                        : "border-white/10 text-[#A1A1AA] hover:text-white"
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+
+              {matchDeck && (
+                <span className="ml-auto text-xs text-[#A1A1AA]">
+                  <span className="font-mono-dj text-[#00D4FF]">{filtered.length}</span> compatible
+                </span>
+              )}
+            </div>
             <div className="p-3 flex items-center gap-3 border-b border-white/5">
               <div className="relative flex-1 max-w-md">
                 <Search className="w-3.5 h-3.5 absolute top-1/2 -translate-y-1/2 left-3 text-[#52525B]" />
