@@ -22,10 +22,9 @@ export default function EQKnob({ value = 0, min = -12, max = 12, onChange, label
     const onMove = (e) => {
       const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
       const dy = startRef.current.y - y; // drag up = increase
-      // Sensitivity: 80px to span the full range. Tuned to feel like a
-      // hardware EQ knob — quick wrist flick spans the full sweep, while
-      // small movements still give fine control.
-      const next = Math.max(min, Math.min(max, startRef.current.v + dy * (range / 80)));
+      // Sensitivity: 60px to span the full range. Quick wrist flick spans
+      // the full sweep; fine control still works for small movements.
+      const next = Math.max(min, Math.min(max, startRef.current.v + dy * (range / 60)));
       onChange?.(next);
     };
     const onUp = () => setDragging(false);
