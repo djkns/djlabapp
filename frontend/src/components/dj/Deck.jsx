@@ -133,11 +133,18 @@ export default function Deck({ id, label, accent }) {
     // we never saw. The fallback (feeding peaks from the BPM-decoded buffer
     // in loadTrack) covers correctness — this just makes the failure visible.
     ws.on("error", (err) => {
+      const msg = err?.message || String(err);
       console.error(`[ws ${id}] error`, err);
+      // Also surface as toast so the user can report what's failing without
+      // needing DevTools. Suppress generic "AbortError" — that's the harmless
+      // race when a new track load cancels the previous one.
+      if (!/abort/i.test(msg)) {
+        toast.error(`Deck ${label}: waveform load failed`, { description: msg, duration: 6000 });
+      }
     });
     wsRef.current = ws;
     return () => { ws.destroy(); wsRef.current = null; };
-  }, [accent, id]);
+  }, [accent, id, label]);
 
   // EQ/Volume/Filter/Trim are wired by Mixer's ChannelStrip (single source of
   // truth). Removing them from Deck means Deck doesn't re-render on those
