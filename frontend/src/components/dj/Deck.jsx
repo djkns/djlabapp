@@ -12,7 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
 import { readTags, readTagsFromUrl } from "@/lib/mediaTags";
 import { analyze as analyzeBPM, guess as guessBPM } from "web-audio-beat-detector";
-import { detectKey, labelToCamelot } from "@/lib/keyDetect";
+import { detectKey, labelToCamelot, camelotCompat } from "@/lib/keyDetect";
 import { toast } from "sonner";
 
 const formatTime = (s) => {
@@ -43,11 +43,14 @@ export default function Deck({ id, label, accent }) {
     pflOn: s[id].pflOn,
     cuePoint: s[id].cuePoint,
     hotCues: s[id].hotCues,
+    musicalKey: s[id].musicalKey,
+    camelot: s[id].camelot,
   })));
   const otherDeck = useDJStore(useShallow((s) => ({
     track: id === "deckA" ? s.deckB.track : s.deckA.track,
     currentBPM: (id === "deckA" ? s.deckB : s.deckA).baseBPM *
                 (1 + (id === "deckA" ? s.deckB : s.deckA).tempoPct / 100),
+    camelot: id === "deckA" ? s.deckB.camelot : s.deckA.camelot,
   })));
   const setDeck = useDJStore((s) => s.setDeck);
   const setLoop = useDJStore((s) => s.setLoop);
@@ -660,6 +663,25 @@ export default function Deck({ id, label, accent }) {
 
   const currentBPM = deck.baseBPM ? (deck.baseBPM * (1 + deck.tempoPct / 100)).toFixed(1) : "—";
 
+  // Compatibility light vs the OTHER deck — combines BPM Δ and Camelot match.
+  // Both decks render the same status (it's a pair-wise comparison).
+  const compat = (() => {
+    if (!deck.track || !otherDeck.track) return null;
+    const aEff = deck.baseBPM * (1 + deck.tempoPct / 100);
+    const bEff = otherDeck.currentBPM;
+    const bpmDelta = aEff && bEff ? Math.abs((bEff - aEff) / aEff) * 100 : null;
+    const bpmStatus = bpmDelta == null ? null : bpmDelta <= 1 ? "harmonic" : bpmDelta <= 4 ? "energy" : "clash";
+    const keyStatus = (deck.camelot && otherDeck.camelot) ? camelotCompat(deck.camelot, otherDeck.camelot) : null;
+    const rank = { harmonic: 0, energy: 1, clash: 2 };
+    const cands = [bpmStatus, keyStatus].filter(Boolean);
+    if (!cands.length) return null;
+    return cands.reduce((w, c) => (rank[c] > rank[w] ? c : w), cands[0]);
+  })();
+  const compatColor = compat === "harmonic" ? "#22c55e"
+                    : compat === "energy"   ? "#eab308"
+                    : compat === "clash"    ? "#ef4444"
+                    : null;
+
   return (
     <div
       data-testid={`deck-${letter}`}
@@ -714,6 +736,29 @@ export default function Deck({ id, label, accent }) {
               {formatTime(deck.currentTime)} / {formatTime(deck.duration)}
             </span>
             <div className="flex items-center gap-1.5">
+              {/* Camelot key badge + compatibility dot vs other deck */}
+              {deck.camelot && (
+                <span
+                  data-testid={`deck-${letter}-camelot`}
+                  title={deck.musicalKey ? `Key · ${deck.musicalKey} (Camelot ${deck.camelot})` : ""}
+                  className="font-mono-dj text-[10px] px-1.5 py-0.5 rounded border tracking-wide leading-none"
+                  style={{
+                    color: "#FF1F1F",
+                    borderColor: "rgba(209,10,10,0.4)",
+                    background: "rgba(209,10,10,0.08)",
+                  }}
+                >
+                  {deck.camelot}
+                </span>
+              )}
+              {compatColor && (
+                <span
+                  data-testid={`deck-${letter}-compat`}
+                  title={`Mix vs Deck ${letter === "a" ? "B" : "A"}: ${compat?.toUpperCase()}`}
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: compatColor, boxShadow: `0 0 8px ${compatColor}` }}
+                />
+              )}
               <div className="label-tiny">BPM</div>
               <div className="font-mono-dj font-bold text-base leading-none" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
                 {currentBPM}
