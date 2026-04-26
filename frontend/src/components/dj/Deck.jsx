@@ -4,6 +4,7 @@ import { Play, Pause, SkipBack, Upload, Headphones, Activity } from "lucide-reac
 import SpinningVinyl from "./SpinningVinyl";
 import EQKnob from "./EQKnob";
 import HotCuePad from "./HotCuePad";
+import HotCueMarkers from "./HotCueMarkers";
 import LoopControls from "./LoopControls";
 import FXSlot from "./FXSlot";
 
@@ -755,6 +756,9 @@ export default function Deck({ id, label, accent }) {
                "linear-gradient(180deg, #050505 0%, #0b0b0b 50%, #050505 100%)",
            }}>
         <div ref={waveRef} data-testid={`deck-${letter}-waveform`} className="absolute inset-0" />
+        {/* Hot cue markers — injected into wavesurfer's scrolling wrapper so
+            they pass under the centered playhead in lock-step with the audio. */}
+        <HotCueMarkers deckId={id} wsRef={wsRef} audioElRef={audioElRef} seekTo={seekTo} />
         {/* Centered playhead */}
         <div className="absolute top-0 bottom-0 left-1/2 pointer-events-none z-10"
              style={{
