@@ -31,8 +31,13 @@ export default function DJLab() {
   const [streaming, setStreaming] = useState(false);
   const [lastRecording, setLastRecording] = useState(null); // { blob, duration }
 
-  const deckA = useDJStore((s) => s.deckA);
-  const deckB = useDJStore((s) => s.deckB);
+  // Narrow subscription: we only need each deck's loaded `track` here (for
+  // the SaveSetDialog snapshot). Subscribing to the entire `s.deckA` /
+  // `s.deckB` objects causes DJLab to re-render — and reconcile the entire
+  // app tree — on EVERY EQ/Trim/Filter/Volume/Tempo drag tick (~60Hz).
+  // Watching just `.track` makes drag re-renders local to the mixer.
+  const deckATrack = useDJStore((s) => s.deckA.track);
+  const deckBTrack = useDJStore((s) => s.deckB.track);
   const recording = useDJStore((s) => s.recording);
   const [recordElapsed, setRecordElapsed] = useState(0);
   // Sync elapsed seconds from a window event dispatched by the Mixer
@@ -84,7 +89,7 @@ export default function DJLab() {
     return () => window.removeEventListener("click", onFirstTouch);
   }, []);
 
-  const tracksUsed = [deckA.track, deckB.track].filter(Boolean).map((t) => ({ key: t.key, name: t.name, source: t.source }));
+  const tracksUsed = [deckATrack, deckBTrack].filter(Boolean).map((t) => ({ key: t.key, name: t.name, source: t.source }));
 
   return (
     <>

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Square, Download, FolderOpen, Gamepad2, Headphones as HpIcon } from "lucide-react";
 import { useDJStore } from "@/store/djStore";
 import {
@@ -88,6 +88,16 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
     return () => window.removeEventListener("dj:chain-ready", apply);
   }, [deckId]);
 
+  // STABLE onChange callbacks for each knob. Without these, ChannelStrip
+  // creates a fresh inline arrow each render, busting React.memo on EQKnob,
+  // so dragging ANY knob re-renders ALL 5 knobs in the strip 60×/sec.
+  // setDeck / setDeckEQ from Zustand are reference-stable; deckId is stable.
+  const onTrim   = useCallback((v) => setDeck(deckId, { trim: v }),   [deckId, setDeck]);
+  const onFilter = useCallback((v) => setDeck(deckId, { filter: v }), [deckId, setDeck]);
+  const onEqLow  = useCallback((v) => setDeckEQ(deckId, "low",  v),   [deckId, setDeckEQ]);
+  const onEqMid  = useCallback((v) => setDeckEQ(deckId, "mid",  v),   [deckId, setDeckEQ]);
+  const onEqHigh = useCallback((v) => setDeckEQ(deckId, "high", v),   [deckId, setDeckEQ]);
+
   return (
     <div className="flex flex-col items-center gap-1 px-1.5" data-testid={`channel-strip-${letter}`}>
       <span className="label-tiny" style={{ color: "#FF1F1F" }}>DECK {deckLabel}</span>
@@ -97,13 +107,13 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
         {/* Knob column */}
         <div className="flex flex-col items-center gap-1">
           <EQKnob label="GAIN" value={trim} min={-12} max={12}
-            onChange={(v) => setDeck(deckId, { trim: v })}
+            onChange={onTrim}
             testid={`channel-${letter}-trim`} />
-          <EQKnob label="HIGH" value={eqHigh} onChange={(v) => setDeckEQ(deckId, "high", v)} testid={`channel-${letter}-eq-high`} />
-          <EQKnob label="MID"  value={eqMid}  onChange={(v) => setDeckEQ(deckId, "mid",  v)} testid={`channel-${letter}-eq-mid`} />
-          <EQKnob label="LOW"  value={eqLow}  onChange={(v) => setDeckEQ(deckId, "low",  v)} testid={`channel-${letter}-eq-low`} />
+          <EQKnob label="HIGH" value={eqHigh} onChange={onEqHigh} testid={`channel-${letter}-eq-high`} />
+          <EQKnob label="MID"  value={eqMid}  onChange={onEqMid}  testid={`channel-${letter}-eq-mid`} />
+          <EQKnob label="LOW"  value={eqLow}  onChange={onEqLow}  testid={`channel-${letter}-eq-low`} />
           <EQKnob label="FILTER" value={filter} min={-1} max={1}
-            onChange={(v) => setDeck(deckId, { filter: v })}
+            onChange={onFilter}
             testid={`channel-${letter}-filter`}
             color="#FF9500"
           />
@@ -116,10 +126,12 @@ function ChannelStrip({ deckId, deckLabel, chain }) {
   );
 }
 
-function TempoFader({ deckId, letter }) {
+function TempoFaderInner({ deckId, letter }) {
   const tempoPct = useDJStore((s) => s[deckId].tempoPct);
   const tempoRange = useDJStore((s) => s[deckId].tempoRange);
   const setDeck = useDJStore((s) => s.setDeck);
+  const onChange = useCallback((v) => setDeck(deckId, { tempoPct: v }), [deckId, setDeck]);
+  const onReset  = useCallback(() => setDeck(deckId, { tempoPct: 0 }), [deckId, setDeck]);
   return (
     <div className="flex flex-col items-center gap-1 pt-2">
       <span className="label-tiny">TEMPO</span>
@@ -129,8 +141,8 @@ function TempoFader({ deckId, letter }) {
       <SmoothSlider
         min={-tempoRange} max={tempoRange} step={0.1}
         value={tempoPct}
-        onChange={(v) => setDeck(deckId, { tempoPct: v })}
-        onDoubleClick={() => setDeck(deckId, { tempoPct: 0 })}
+        onChange={onChange}
+        onDoubleClick={onReset}
         className="fader-vert"
         style={{ height: 160 }}
         testid={`channel-${letter}-tempo`}
@@ -140,6 +152,9 @@ function TempoFader({ deckId, letter }) {
     </div>
   );
 }
+// Memoize so dragging an EQ knob in the same ChannelStrip doesn't re-render
+// the tempo fader. Props (deckId, letter) are stable strings.
+const TempoFader = React.memo(TempoFaderInner);
 
 function VolumeFader({ deckId, chain }) {
   const volume = useDJStore((s) => s[deckId].volume);
