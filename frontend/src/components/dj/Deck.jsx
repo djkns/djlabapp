@@ -6,7 +6,7 @@ import EQKnob from "./EQKnob";
 import HotCuePad from "./HotCuePad";
 import LoopControls from "./LoopControls";
 import FXSlot from "./FXSlot";
-import RecentlyPlayed from "./RecentlyPlayed";
+
 import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
 import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
@@ -828,8 +828,6 @@ export default function Deck({ id, label, accent }) {
         </div>
       </div>
 
-      {/* Per-deck recently played — fills empty space below the FX rack */}
-      <RecentlyPlayed deckId={id} deckLabel={label} limit={8} />
     </div>
   );
 }

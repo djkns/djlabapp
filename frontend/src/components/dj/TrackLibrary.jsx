@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Music, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { Music, Search, ChevronUp, ChevronDown, Clock } from "lucide-react";
 import { List as VList } from "react-window";
+import RecentlyPlayed from "./RecentlyPlayed";
 
 const ROW_HEIGHT = 44;
 
@@ -15,6 +16,7 @@ export default function TrackLibrary({ open, onToggle }) {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
+  const [tab, setTab] = useState("library"); // "library" | "recentA" | "recentB"
   const containerRef = useRef(null);
   const [containerH, setContainerH] = useState(360);
 
@@ -35,7 +37,7 @@ export default function TrackLibrary({ open, onToggle }) {
     });
     ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [open]);
+  }, [open, tab]);
 
   const loadToDeck = (track, deckId) => {
     window.dispatchEvent(new CustomEvent("dj:load", { detail: { deckId, track } }));
@@ -128,44 +130,79 @@ export default function TrackLibrary({ open, onToggle }) {
       </button>
 
       <div className="h-[60vh] bg-[#0a0a0a]/98 backdrop-blur-2xl border-t border-white/10 overflow-hidden flex flex-col">
-        <div className="p-3 flex items-center gap-3 border-b border-white/5">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-3.5 h-3.5 absolute top-1/2 -translate-y-1/2 left-3 text-[#52525B]" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search title / artist / album…"
-              className="w-full bg-black/60 border border-white/10 rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-[#52525B] focus:outline-none focus:border-[#D10A0A]"
-              data-testid="library-search"
+        {/* Tab strip */}
+        <div className="flex items-center gap-1 px-3 pt-2 border-b border-white/5">
+          {[
+            { k: "library", label: `Library · ${tracks.length}`, icon: Music },
+            { k: "recentA", label: "Recent A", icon: Clock },
+            { k: "recentB", label: "Recent B", icon: Clock },
+          ].map(({ k, label, icon: Icon }) => (
+            <button
+              key={k}
+              data-testid={`library-tab-${k}`}
+              onClick={() => setTab(k)}
+              className={`flex items-center gap-1.5 text-[10px] tracking-[0.22em] uppercase font-bold px-3 py-1.5 rounded-t border-b-2 transition ${
+                tab === k
+                  ? "border-[#FF1F1F] text-white bg-white/[0.04]"
+                  : "border-transparent text-[#A1A1AA] hover:text-white"
+              }`}
+            >
+              <Icon className={`w-3 h-3 ${tab === k ? "text-[#FF1F1F]" : ""}`} />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "library" ? (
+          <>
+            <div className="p-3 flex items-center gap-3 border-b border-white/5">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-3.5 h-3.5 absolute top-1/2 -translate-y-1/2 left-3 text-[#52525B]" />
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search title / artist / album…"
+                  className="w-full bg-black/60 border border-white/10 rounded pl-9 pr-3 py-2 text-sm text-white placeholder:text-[#52525B] focus:outline-none focus:border-[#D10A0A]"
+                  data-testid="library-search"
+                />
+              </div>
+              <span className="label-tiny text-[#52525B]">{loading ? "Loading…" : "Drag a row onto a deck"}</span>
+            </div>
+
+            <div className="px-4 py-1.5 border-b border-white/5 flex items-center gap-3 text-[#52525B] label-tiny">
+              <span className="w-7"></span>
+              <span className="flex-1">Title · Artist</span>
+              <span className="w-12 text-right">BPM</span>
+              <span className="w-10 text-center">Src</span>
+              <span className="w-14 text-right">Load</span>
+            </div>
+
+            <div ref={containerRef} className="flex-1 min-h-0">
+              {filtered.length === 0 ? (
+                <div className="px-4 py-12 text-center text-[#52525B] text-sm">
+                  {loading ? "Loading…" : "No tracks match your search."}
+                </div>
+              ) : (
+                <VList
+                  rowComponent={Row}
+                  rowCount={filtered.length}
+                  rowHeight={ROW_HEIGHT}
+                  rowProps={{}}
+                  className="dj-scroll"
+                  style={{ height: containerH || 360 }}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 min-h-0 p-3 flex flex-col">
+            <RecentlyPlayed
+              deckId={tab === "recentA" ? "deckA" : "deckB"}
+              deckLabel={tab === "recentA" ? "A" : "B"}
+              limit={50}
             />
           </div>
-          <span className="label-tiny text-[#52525B]">{loading ? "Loading…" : "Drag a row onto a deck"}</span>
-        </div>
-
-        <div className="px-4 py-1.5 border-b border-white/5 flex items-center gap-3 text-[#52525B] label-tiny">
-          <span className="w-7"></span>
-          <span className="flex-1">Title · Artist</span>
-          <span className="w-12 text-right">BPM</span>
-          <span className="w-10 text-center">Src</span>
-          <span className="w-14 text-right">Load</span>
-        </div>
-
-        <div ref={containerRef} className="flex-1 min-h-0">
-          {filtered.length === 0 ? (
-            <div className="px-4 py-12 text-center text-[#52525B] text-sm">
-              {loading ? "Loading…" : "No tracks match your search."}
-            </div>
-          ) : (
-            <VList
-              rowComponent={Row}
-              rowCount={filtered.length}
-              rowHeight={ROW_HEIGHT}
-              rowProps={{}}
-              className="dj-scroll"
-              style={{ height: containerH || 360 }}
-            />
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
