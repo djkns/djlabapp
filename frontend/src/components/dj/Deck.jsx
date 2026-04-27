@@ -206,6 +206,126 @@ export default function Deck({ id, label, accent }) {
   const [jogPulse, setJogPulse] = useState(0);
   const jogPulseTimer = useRef(null);
 
+  // --- Jog Engine: pitch-bend (default) vs scratch (platter touched) -------
+  // Real DJ controllers separate these two modes by a touch-sensitive top
+  // ring on the platter. Without touch, the wheel BENDS the pitch — a
+  // temporary speed nudge that decays back to the deck's true tempo. WITH
+  // touch (or while the deck is paused), the wheel SCRATCHES — every tick
+  // seeks the audio. Mapping that distinction is what makes a controller
+  // feel "real" vs "arcade".
+  //
+  // Refs (instead of React state) so jog ticks at 60–200 Hz don't trigger
+  // re-renders. setJogPulse is the only state write — and it's debounced
+  // through requestAnimationFrame.
+  const platterTouchedRef = useRef(false);
+  const [platterTouched, setPlatterTouched] = useState(false);
+  const bendRef = useRef(0);                // current pitch-bend amount
+  const bendLoopRunningRef = useRef(false);
+  const pendingScratchRef = useRef(0);      // accumulated scratch seek (sec)
+  const scratchFlushRafRef = useRef(0);
+  const handleJogRef = useRef(null);
+  const handlePlatterTouchRef = useRef(null);
+
+  useEffect(() => {
+    // Tunables ------------------------------------------------------------
+    const BEND_PER_TICK = 0.0035;   // each tick adds this much to bend (~5% per fast spin)
+    const BEND_DECAY    = 0.86;     // per-frame multiplier (faster = quicker return to true tempo)
+    const BEND_THRESH   = 0.0008;   // below this, snap to zero
+    const BEND_MAX      = 0.5;      // ±50% bend ceiling
+
+    // Bend loop — runs while bend != 0, applies playbackRate = base × (1+bend),
+    // and exponentially decays bend toward zero each frame.
+    const startBendLoop = () => {
+      if (bendLoopRunningRef.current) return;
+      bendLoopRunningRef.current = true;
+      const loop = () => {
+        const el = audioElRef.current;
+        bendRef.current *= BEND_DECAY;
+        if (Math.abs(bendRef.current) < BEND_THRESH) bendRef.current = 0;
+        if (el) {
+          const tempoPct = useDJStore.getState()[id].tempoPct;
+          const baseRate = 1 + tempoPct / 100;
+          el.playbackRate = baseRate * (1 + bendRef.current);
+        }
+        if (bendRef.current === 0) {
+          bendLoopRunningRef.current = false;
+          // Final write so we land EXACTLY on base rate (avoids slow drift).
+          if (el) {
+            const tempoPct = useDJStore.getState()[id].tempoPct;
+            el.playbackRate = 1 + tempoPct / 100;
+          }
+          return;
+        }
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    };
+
+    // Scratch flush — coalesces all jog ticks within an animation frame
+    // into a single `currentTime` write. Without this, rapid CC bursts
+    // hammer HTMLMediaElement seek and produce audible jitter.
+    const flushScratch = () => {
+      scratchFlushRafRef.current = 0;
+      const el = audioElRef.current;
+      const delta = pendingScratchRef.current;
+      pendingScratchRef.current = 0;
+      if (!el || delta === 0) return;
+      const dur = el.duration || 0;
+      const next = Math.max(0, Math.min(dur - 0.05, (el.currentTime || 0) + delta));
+      try { el.currentTime = next; } catch { /* noop */ }
+      setDeck(id, { currentTime: next });
+    };
+
+    handleJogRef.current = (ticks) => {
+      const el = audioElRef.current;
+      if (!el) return;
+      // SCRATCH mode: platter touched OR audio paused.
+      const scratching = platterTouchedRef.current || el.paused;
+      if (scratching) {
+        pendingScratchRef.current += ticks * JOG_SEC_PER_TICK;
+        if (!scratchFlushRafRef.current) {
+          scratchFlushRafRef.current = requestAnimationFrame(flushScratch);
+        }
+      } else {
+        // PITCH BEND mode.
+        bendRef.current = Math.max(-BEND_MAX, Math.min(BEND_MAX, bendRef.current + ticks * BEND_PER_TICK));
+        if (bendRef.current !== 0) startBendLoop();
+      }
+      // Visual pulse on the platter — happens in EITHER mode so the on-
+      // screen vinyl rotates with the wheel. Coalesced via setJogPulse.
+      setJogPulse((p) => p + ticks * 0.12);
+      if (jogPulseTimer.current) clearTimeout(jogPulseTimer.current);
+      jogPulseTimer.current = setTimeout(() => setJogPulse(0), 220);
+    };
+
+    handlePlatterTouchRef.current = (pressed) => {
+      platterTouchedRef.current = pressed;
+      setPlatterTouched(pressed);
+      const el = audioElRef.current;
+      if (!el) return;
+      if (pressed) {
+        // Engage scratch — kill any in-flight bend and reset to base rate
+        // so scratching doesn't fight against a residual bend.
+        bendRef.current = 0;
+        const tempoPct = useDJStore.getState()[id].tempoPct;
+        el.playbackRate = 1 + tempoPct / 100;
+      } else {
+        // Release — flush any leftover scratch deltas, no bend triggered.
+        if (scratchFlushRafRef.current) {
+          cancelAnimationFrame(scratchFlushRafRef.current);
+          scratchFlushRafRef.current = 0;
+          flushScratch();
+        }
+      }
+    };
+
+    return () => {
+      if (scratchFlushRafRef.current) cancelAnimationFrame(scratchFlushRafRef.current);
+      handleJogRef.current = null;
+      handlePlatterTouchRef.current = null;
+    };
+  }, [id, setDeck, JOG_SEC_PER_TICK]);
+
   const onScratchStart = useCallback(() => {
     const el = audioElRef.current;
     if (!el || !useDJStore.getState()[id].track) return;
@@ -731,7 +851,7 @@ export default function Deck({ id, label, accent }) {
 
   // MIDI / keyboard actions
   useEffect(() => {
-    const doAction = (action, value) => {
+    const doAction = (action, value, detail) => {
       const prefix = `${id}.`;
       if (!action.startsWith(prefix)) return;
       const sub = action.slice(prefix.length);
@@ -740,6 +860,12 @@ export default function Deck({ id, label, accent }) {
       else if (sub === "sync") sync();
       else if (sub === "pfl") setPfl(id, !deck.pflOn);
       else if (sub === "keylock") setDeck(id, { keylock: !deck.keylock });
+      else if (sub === "platterTouch") {
+        // Touch top of platter → switch jog mode from pitch-bend to scratch.
+        // Release → switch back. handlePlatterTouchRef is set up below in
+        // the jog-engine effect.
+        handlePlatterTouchRef.current?.(!!detail?.pressed);
+      }
       else if (sub === "loopIn") {
         const t = audioElRef.current?.currentTime ?? 0;
         setLoop(id, { in: t, enabled: false, beats: null });
@@ -752,15 +878,11 @@ export default function Deck({ id, label, accent }) {
         }
       }
       else if (sub === "jog") {
-        // MIDI jog wheel: seek by ticks * JOG_SEC_PER_TICK. Clamp to track bounds.
-        const el = audioElRef.current; if (!el) return;
-        const next = Math.max(0, Math.min((el.duration || 0) - 0.05, (el.currentTime || 0) + value * JOG_SEC_PER_TICK));
-        try { el.currentTime = next; } catch { /* noop */ }
-        setDeck(id, { currentTime: next });
-        // Brief visual pulse on the platter
-        setJogPulse((p) => p + value * 0.12);
-        if (jogPulseTimer.current) clearTimeout(jogPulseTimer.current);
-        jogPulseTimer.current = setTimeout(() => setJogPulse(0), 220);
+        // Routed through the dedicated jog engine below — supports both
+        // pitch-bend (no touch + playing) and scratch (touch OR paused),
+        // with rAF-coalesced seek writes (zero jitter) and exponentially
+        // decaying bend (no permanent BPM drift).
+        handleJogRef.current?.(value);
       }
       else if (sub === "volume")  setDeck(id, { volume: value });
       else if (sub === "tempo")   setDeck(id, { tempoPct: Math.max(-deck.tempoRange, Math.min(deck.tempoRange, value * deck.tempoRange)) });
@@ -790,7 +912,7 @@ export default function Deck({ id, label, accent }) {
         else seekTo(existing);
       }
     };
-    const mh = (e) => doAction(e.detail.action, e.detail.value);
+    const mh = (e) => doAction(e.detail.action, e.detail.value, e.detail);
     window.addEventListener("dj:action", mh);
 
     // Keyboard shortcuts (only when not typing in an input)
@@ -873,6 +995,20 @@ export default function Deck({ id, label, accent }) {
           <div className="mt-1 flex items-center justify-between gap-2">
             <DeckTimeReadout deckId={id} />
             <div className="flex items-center gap-1.5">
+              {/* Jog mode indicator — only visible while jog is active */}
+              {(platterTouched || Math.abs(jogPulse) > 0.05) && (
+                <span
+                  data-testid={`deck-${letter}-jog-mode`}
+                  className="font-mono-dj text-[9px] font-bold tracking-[0.2em] px-1.5 py-0.5 rounded border"
+                  style={{
+                    color: platterTouched ? "#FF1F1F" : "#FFE500",
+                    borderColor: platterTouched ? "#FF1F1F" : "#FFE500",
+                    background: (platterTouched ? "#FF1F1F" : "#FFE500") + "20",
+                  }}
+                >
+                  {platterTouched ? "SCRATCH" : "BEND"}
+                </span>
+              )}
               <div className="label-tiny">BPM</div>
               <div className="font-mono-dj font-bold text-base leading-none" style={{ color: accent }} data-testid={`deck-${letter}-bpm`}>
                 <CurrentBPM deckId={id} baseBPM={deck.baseBPM} />

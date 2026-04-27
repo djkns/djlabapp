@@ -44,7 +44,9 @@ export const MIDI_GROUPS = [
     label: "Jog / Platter",
     controls: [
       { id: "deckA.jog", label: "Deck A · Jog Wheel", kind: "jog" },
+      { id: "deckA.platterTouch", label: "Deck A · Platter Touch (top)", kind: "button" },
       { id: "deckB.jog", label: "Deck B · Jog Wheel", kind: "jog" },
+      { id: "deckB.platterTouch", label: "Deck B · Platter Touch (top)", kind: "button" },
     ],
   },
   {

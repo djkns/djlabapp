@@ -9,6 +9,7 @@ const isButtonControl = (ctrl) =>
   ctrl.endsWith(".pfl") ||
   ctrl.endsWith(".enabled") ||
   ctrl.endsWith(".next") ||
+  ctrl.endsWith(".platterTouch") ||
   ctrl.includes(".hotcue.") ||
   ctrl === "master.record" ||
   ctrl === "mic.enabled";
@@ -77,6 +78,18 @@ export default function MidiDispatcher() {
       lastValueRef.current[sig] = data2;
 
       if (isButtonControl(ctrl)) {
+        // Platter-touch is a special case: we need BOTH press (data2 > 0)
+        // and release (data2 == 0) so the engine knows when to switch
+        // back from scratch → pitch-bend mode. Forward both edges with a
+        // `pressed` flag.
+        if (ctrl.endsWith(".platterTouch")) {
+          const pressed = data2 > 0;
+          const wasPressed = lastVal > 0;
+          if (pressed !== wasPressed) {
+            window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, pressed } }));
+          }
+          return;
+        }
         const wasZero = lastVal <= 0;
         if (data2 > 0 && wasZero) {
           window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl } }));
