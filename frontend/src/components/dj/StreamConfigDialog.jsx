@@ -35,6 +35,14 @@ export default function StreamConfigDialog({ open, onClose }) {
 
   useEffect(() => subscribeStreamStatus(setStatus), []);
 
+  // Esc to close — Plus the X button gets cut off when scrolled.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const saveNpAndApply = (patch) => {
@@ -96,18 +104,22 @@ export default function StreamConfigDialog({ open, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
          data-testid="stream-dialog">
-      <div className="bg-[#0f0f0f] border-2 border-[#D10A0A]/40 rounded-lg p-5 w-[600px] max-w-[92vw] shadow-[0_0_40px_rgba(209,10,10,0.35)]">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-[#0f0f0f] border-2 border-[#D10A0A]/40 rounded-lg w-[600px] max-w-[92vw] max-h-[92vh] flex flex-col shadow-[0_0_40px_rgba(209,10,10,0.35)]">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 bg-[#0f0f0f]/95 backdrop-blur-sm border-b border-white/10 rounded-t-lg">
           <div className="flex items-center gap-2">
             <Radio className="w-5 h-5 text-[#FF1F1F]" />
             <span className="font-display font-black text-lg tracking-tight">Live Stream · Icecast / AzuraCast</span>
           </div>
-          <button onClick={onClose} data-testid="stream-close" className="text-[#A1A1AA] hover:text-white">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} data-testid="stream-close"
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] tracking-[0.22em] uppercase font-bold text-[#A1A1AA] hover:text-white hover:bg-white/5 transition"
+            title="Close (Esc)">
+            <X className="w-4 h-4" />
+            <span>Close</span>
           </button>
         </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
 
         {status.connected && (
           <div className="mb-3 px-3 py-2 rounded border border-[#FF1F1F]/50 bg-[#D10A0A]/10 text-[11px] tracking-[0.15em] uppercase text-[#FF1F1F] flex items-center gap-2">
@@ -306,6 +318,16 @@ export default function StreamConfigDialog({ open, onClose }) {
         <div className="mt-3 flex items-start gap-2 text-[10px] text-[#52525B] italic">
           <Info className="w-3 h-3 shrink-0 mt-0.5" />
           AzuraCast / Shoutcast: enter your DJ username + password separately — we pack them as <code className="text-[#A1A1AA]">user:password</code> automatically. Credentials are stored in your browser only.
+        </div>
+        </div>
+        <div className="sticky bottom-0 z-10 px-5 py-3 bg-[#0f0f0f]/95 backdrop-blur-sm border-t border-white/10 rounded-b-lg flex justify-end">
+          <button
+            onClick={onClose}
+            data-testid="stream-done"
+            className="px-5 py-2 rounded border border-white/20 text-[10px] tracking-[0.22em] uppercase font-bold text-[#A1A1AA] hover:text-white hover:border-white/50 transition"
+          >
+            Done
+          </button>
         </div>
       </div>
     </div>
