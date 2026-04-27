@@ -356,7 +356,9 @@ export function enableMicWithStream(stream) {
 export function setMicVolume(v) {
   if (!micGain) return;
   const ctx = getAudioContext().ctx;
-  micGain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, v)), ctx.currentTime, 0.02);
+  // Allow up to 3x boost — many built-in laptop mics need significant
+  // gain to be usable without OS-level AGC.
+  micGain.gain.setTargetAtTime(Math.max(0, Math.min(3.0, v)), ctx.currentTime, 0.02);
 }
 
 export function isMicActive() { return !!micStream; }

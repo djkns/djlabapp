@@ -87,6 +87,7 @@ export const useDJStore = create(
       mic: {
         enabled: false,
         volume: 0.8,
+        deviceId: "default",   // selected input device — "default" = OS pick
       },
 
       // MIDI

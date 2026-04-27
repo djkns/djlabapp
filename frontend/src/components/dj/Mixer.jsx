@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
 import SmoothSlider from "./SmoothSlider";
+import MicDevicePicker from "./MicDevicePicker";
 
 // Thin vertical stereo VU bar driven by a deck's analyser
 function ChannelVUInner({ analyser, tall = false }) {
@@ -292,6 +293,37 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   // This effect only handles the volume update for a mic that's already active.
   useEffect(() => { if (mic.enabled) setMicVolume(mic.volume); }, [mic.volume, mic.enabled]);
 
+  // Hot-swap mic source when user changes the device picker while mic is
+  // already live. Tear down the current stream and re-grab from the new
+  // device. We keep this effect outside the click handler because this
+  // path doesn't need a fresh user gesture (permission already granted).
+  useEffect(() => {
+    if (!mic.enabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await enableMic(false); // disconnect current source
+        const deviceId = mic.deviceId && mic.deviceId !== "default" ? mic.deviceId : null;
+        const constraints = deviceId
+          ? { ...DJ_MIC_CONSTRAINTS, deviceId: { exact: deviceId } }
+          : DJ_MIC_CONSTRAINTS;
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints })
+          .catch(() => navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true }));
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const ok = await enableMicWithStream(stream);
+        if (ok) setMicVolume(mic.volume);
+        else { setMic({ enabled: false }); toast.error("Failed to switch mic input"); }
+      } catch (err) {
+        console.error("[mic] hot-swap failed", err);
+        setMic({ enabled: false });
+        toast.error("Mic source switch failed", { description: err?.message || err?.name });
+      }
+    })();
+    return () => { cancelled = true; };
+    // Intentionally NOT depending on mic.volume — that has its own effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mic.deviceId]);
+
   const handleMicToggle = () => {
     if (mic.enabled) {
       // Disabling is safe to do via async
@@ -335,17 +367,24 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     // (OverconstrainedError on echoCancellation/AGC/NS), so we try the
     // DJ-grade strict constraints first and fall back to simple `audio: true`
     // if that throws. Either way the gesture is preserved.
-    let micPromise = navigator.mediaDevices.getUserMedia({ audio: DJ_MIC_CONSTRAINTS })
+    // Also: bind to the user's selected input device (T7 mic input vs
+    // built-in laptop mic). "default" lets the OS pick.
+    const deviceId = mic.deviceId && mic.deviceId !== "default" ? mic.deviceId : null;
+    const baseConstraints = deviceId
+      ? { ...DJ_MIC_CONSTRAINTS, deviceId: { exact: deviceId } }
+      : DJ_MIC_CONSTRAINTS;
+    let micPromise = navigator.mediaDevices.getUserMedia({ audio: baseConstraints })
       .catch((err) => {
-        // Fall back to plain `{ audio: true }` on any error class where the
-        // strict constraints could plausibly be the cause. Firefox in
-        // particular can throw NotFoundError on the strict constraint set
-        // even when a working mic exists. Without this fallback the user
-        // sees "No microphone device found" with a perfectly fine mic.
+        // Fall back to plain `{ audio: true }` (still honoring deviceId if
+        // any) on any error class where the strict constraints could
+        // plausibly be the cause. Firefox in particular can throw
+        // NotFoundError on the strict constraint set even when a working
+        // mic exists.
         const fallbackErrors = ["OverconstrainedError", "TypeError", "NotReadableError", "NotFoundError"];
         if (fallbackErrors.includes(err?.name)) {
-          console.warn("[mic] strict constraints rejected, falling back to audio: true", err.name);
-          return navigator.mediaDevices.getUserMedia({ audio: true });
+          console.warn("[mic] strict constraints rejected, falling back to plain audio", err.name);
+          const fallback = deviceId ? { deviceId: { exact: deviceId } } : true;
+          return navigator.mediaDevices.getUserMedia({ audio: fallback });
         }
         throw err;
       });
@@ -433,7 +472,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
       else if (action === "hp.enabled") setHp({ enabled: !useDJStore.getState().hp.enabled });
       else if (action === "crossfader") useDJStore.getState().setCrossfader(Math.max(-1, Math.min(1, value)));
       else if (action === "mic.enabled") { await resumeAudioContext(); setMic({ enabled: !mic.enabled }); }
-      else if (action === "mic.volume") setMic({ volume: Math.max(0, Math.min(1.2, value * 1.2)) });
+      else if (action === "mic.volume") setMic({ volume: Math.max(0, Math.min(3.0, value * 3.0)) });
     };
     window.addEventListener("dj:action", h);
     return () => window.removeEventListener("dj:action", h);
@@ -510,6 +549,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
           {/* Mic section */}
           <div className="flex flex-col items-center gap-0.5 mt-1 pt-1 border-t border-white/10 w-full">
             <span className="label-tiny" style={{ color: mic.enabled ? "#FF1F1F" : "#A1A1AA" }}>MIC</span>
+            <MicDevicePicker />
             <button
               data-testid="mic-toggle"
               onClick={handleMicToggle}
@@ -523,8 +563,8 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
               {mic.enabled ? <Mic className="w-3 h-3 pointer-events-none" /> : <MicOff className="w-3 h-3 pointer-events-none" />}
             </button>
             <EQKnob
-              label="MIC VOL" value={mic.volume} min={0} max={1.2}
-              onChange={(v) => setMic({ volume: Math.max(0, Math.min(1.2, v)) })}
+              label="MIC VOL" value={mic.volume} min={0} max={3.0}
+              onChange={(v) => setMic({ volume: Math.max(0, Math.min(3.0, v)) })}
               testid="mic-volume"
               color="#FF9500"
             />
