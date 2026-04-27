@@ -10,7 +10,10 @@ import FXSlot from "./FXSlot";
 
 import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
-import { createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext } from "@/lib/audioEngine";
+import {
+  createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext,
+  setScratchBuffer, clearScratchBuffer, enterScratchMode, exitScratchMode, scratchTick, hasScratchBuffer,
+} from "@/lib/audioEngine";
 import { readTags, readTagsFromUrl } from "@/lib/mediaTags";
 import { analyze as analyzeBPM, guess as guessBPM } from "web-audio-beat-detector";
 import { toast } from "sonner";
@@ -284,9 +287,16 @@ export default function Deck({ id, label, accent }) {
       // SCRATCH mode: platter touched OR audio paused.
       const scratching = platterTouchedRef.current || el.paused;
       if (scratching) {
+        // 1. Drive the seek-based playhead (visual + tracks position)
         pendingScratchRef.current += ticks * JOG_SEC_PER_TICK;
         if (!scratchFlushRafRef.current) {
           scratchFlushRafRef.current = requestAnimationFrame(flushScratch);
+        }
+        // 2. Drive the audible scratch slice (real "wkka wkka" sound).
+        // Only when platter is actually touched + we have a pre-decoded
+        // buffer ready; otherwise stays silent (better than stutter).
+        if (platterTouchedRef.current && hasScratchBuffer(id)) {
+          scratchTick(id, ticks);
         }
         // Refresh failsafe — active scratching keeps the touch alive
         if (platterTouchedRef.current && touchFailsafeTimerRef.current) {
@@ -326,9 +336,9 @@ export default function Deck({ id, label, accent }) {
 
       if (pressed) {
         // Engage scratch — kill any in-flight bend, pause audio so the
-        // wheel is the ONLY thing driving playhead movement (real DJ
-        // platter behavior — without pausing, our seeks fight playback
-        // and you get the "platter doesn't turn" feel).
+        // wheel is the ONLY thing moving the playhead (real DJ platter
+        // behavior). Hand the playhead position to the scratch engine
+        // so its buffer-slice player picks up at the right place.
         bendRef.current = 0;
         const tempoPct = useDJStore.getState()[id].tempoPct;
         scratchSavedRef.current = {
@@ -338,6 +348,7 @@ export default function Deck({ id, label, accent }) {
         if (!el.paused) {
           try { el.pause(); } catch { /* noop */ }
         }
+        enterScratchMode(id, el.currentTime || 0);
         // Failsafe timer
         touchFailsafeTimerRef.current = setTimeout(() => {
           if (platterTouchedRef.current) {
@@ -346,12 +357,16 @@ export default function Deck({ id, label, accent }) {
           }
         }, 1500);
       } else {
-        // Release — flush leftover scratch deltas, then resume playback
-        // if it was playing when we engaged.
+        // Release — flush leftover scratch deltas, pull final position
+        // from the scratch engine, then resume HTML5 playback.
         if (scratchFlushRafRef.current) {
           cancelAnimationFrame(scratchFlushRafRef.current);
           scratchFlushRafRef.current = 0;
           flushScratch();
+        }
+        const finalPos = exitScratchMode(id);
+        if (finalPos != null) {
+          try { el.currentTime = finalPos; } catch { /* noop */ }
         }
         const saved = scratchSavedRef.current;
         if (saved && saved.wasPlaying) {
@@ -531,17 +546,21 @@ export default function Deck({ id, label, accent }) {
               }
               if (cached?.bpm && cached?.musical_key && !needsTagRead) {
                 // BPM + key + tags all cached → skip BPM detect entirely.
-                // BUT: still verify wavesurfer actually rendered the
-                // waveform. The recurring "blank deck window" bug shows
-                // up here too — wavesurfer reports loaded but renders
-                // nothing. Watch wsLoaded then check duration; if
-                // missing, force-load via peaks (using a fresh decode).
+                // Still: (1) verify wavesurfer rendered + force peaks
+                // fallback if blank, and (2) hand the decoded buffer to
+                // the scratch engine so the platter can play real audio.
                 (async () => {
                   try {
                     await wsLoaded;
+                    if (useDJStore.getState()[id].track?.key !== trackKey) return;
+                    // Try to reuse wavesurfer's buffer first (zero cost)
+                    let cachedBuf = null;
+                    try { cachedBuf = wsRef.current?.getDecodedData?.(); } catch { /* ignore */ }
                     const wsDur = wsRef.current?.getDuration?.() || 0;
-                    const cur2 = useDJStore.getState()[id].track;
-                    if (wsDur >= 0.5 || !wsRef.current || cur2?.key !== trackKey) return;
+                    if (cachedBuf && wsDur >= 0.5) {
+                      try { setScratchBuffer(id, cachedBuf); } catch (err) { console.warn(`[scratch ${id}] cached buffer register failed`, err); }
+                      return; // waveform looks fine — done
+                    }
                     console.warn(`[ws ${id}] cached-path: no duration, forcing peaks render`);
                     const resp = await fetch(playUrl);
                     if (!resp.ok) return;
@@ -549,6 +568,7 @@ export default function Deck({ id, label, accent }) {
                     const ac = getAudioContext().ctx;
                     const buf2 = await ac.decodeAudioData(arr.slice(0));
                     if (useDJStore.getState()[id].track?.key !== trackKey) return;
+                    try { setScratchBuffer(id, buf2); } catch (err) { console.warn(`[scratch ${id}] cached fallback register failed`, err); }
                     const peaks = [];
                     for (let i = 0; i < buf2.numberOfChannels; i++) peaks.push(buf2.getChannelData(i));
                     const el = audioElRef.current;
@@ -619,6 +639,11 @@ export default function Deck({ id, label, accent }) {
             const ac = getAudioContext().ctx;
             buf = await ac.decodeAudioData(arr.slice(0));
           }
+          // Register the decoded buffer with the scratch engine so the
+          // platter can play real audio (forward + reversed) when touched.
+          // Cheap one-time op per track — reverse buffer is built once on
+          // setScratchBuffer.
+          try { setScratchBuffer(id, buf); } catch (err) { console.warn(`[scratch ${id}] buffer register failed`, err); }
           // GUARANTEED WAVEFORM FALLBACK: if wavesurfer's own load/decode
           // didn't actually render audio, feed it the peaks we just
           // decoded. Use `getDuration()` as the canonical signal (NOT

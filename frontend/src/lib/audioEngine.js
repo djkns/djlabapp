@@ -119,6 +119,18 @@ export function createDeckChain(audioEl) {
   const preFader = ctx.createGain();
   preFader.gain.value = 1.0;
 
+  // Element-source mute gain — sits between the <audio> source and the
+  // signal chain. We snap this to 0 during scratch mode so only the
+  // buffer-slice scratch player is audible. Default 1.0 = unity.
+  const elementGain = ctx.createGain();
+  elementGain.gain.value = 1.0;
+
+  // Scratch input — buffer-slice player connects HERE during scratch.
+  // Joins the chain at the same point as elementGain (post-source, pre-EQ)
+  // so scratch audio receives the same EQ/filter/volume/crossfader.
+  const scratchInput = ctx.createGain();
+  scratchInput.gain.value = 1.0;
+
   // FX slots (inserted in series after preFader, before cue/volume)
   const fx1 = createFXSlot(ctx);
   const fx2 = createFXSlot(ctx);
@@ -135,8 +147,12 @@ export function createDeckChain(audioEl) {
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
 
-  // source -> trim -> EQ -> colorFilter -> preFader -> fx1 -> fx2 -> [cue / volume]
-  source.connect(trim);
+  // source -> elementGain ┐
+  //                       ├-> trim -> EQ -> colorFilter -> preFader -> fx1 -> fx2 -> [cue / volume]
+  // scratchInput ─────────┘
+  source.connect(elementGain);
+  elementGain.connect(trim);
+  scratchInput.connect(trim);
   trim.connect(low);
   low.connect(mid);
   mid.connect(high);
@@ -156,6 +172,7 @@ export function createDeckChain(audioEl) {
   return {
     ctx, source, trim, low, mid, high, colorFilter, preFader, cueSend, volume, crossfade, analyser,
     fx1, fx2,
+    elementGain, scratchInput,
     // All user-controlled gain/freq changes use setTargetAtTime for smooth
     // 10ms ramps — this kills "zipper noise" (audible clicks) that you'd get
     // from writing `.value` directly on every drag pixel. It also decouples
@@ -201,6 +218,163 @@ const deckChains = {};
 export function registerDeckChain(deckId, chain) { deckChains[deckId] = chain; }
 export function getDeckChain(deckId) { return deckChains[deckId] || null; }
 export function getAllDeckChains() { return deckChains; }
+
+// -------- Scratch Engine (per-deck) ----------------------------------------
+//
+// Real "wkka wkka" scratching can't be done with HTML5 <audio> alone (every
+// seek flushes the decoder = stutter). Instead, we keep the existing audio
+// element for NORMAL playback, and switch over to short AudioBufferSource
+// slices ONLY while the platter is touched.
+//
+// Per deck:
+//   • scratchBuffers: { fwd: AudioBuffer, rev: AudioBuffer }
+//     `rev` is a sample-reversed copy so backward scratch plays in true
+//     reverse (vocals etc.) — there's no negative playbackRate in WebAudio.
+//   • scratchPos: virtual playhead in seconds, updated every jog tick.
+//   • scratchActive: when true, the deck's element gain is muted and the
+//     buffer-slice player owns the audible signal.
+//
+// A "tick" = one jog encoder click. We map ticks → seconds via the same
+// SCRATCH_SEC_PER_ROTATION constant the visual layer uses.
+//
+const scratchState = {};
+function getScratchState(deckId) {
+  if (!scratchState[deckId]) {
+    scratchState[deckId] = {
+      buffers: null,
+      pos: 0,
+      active: false,
+      // The element's gain prior to scratch — restored on exit.
+      preMuteVol: null,
+    };
+  }
+  return scratchState[deckId];
+}
+
+function reverseBuffer(ctx, buf) {
+  const out = ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const src = buf.getChannelData(c);
+    const dst = out.getChannelData(c);
+    const n = src.length;
+    for (let i = 0; i < n; i++) dst[i] = src[n - 1 - i];
+  }
+  return out;
+}
+
+/**
+ * Provide a decoded AudioBuffer for a deck. Call after track load. We
+ * pre-build the reversed copy now so each scratch tick is fast.
+ *
+ * Idempotent — calling again replaces the buffers (e.g. on track change).
+ */
+export function setScratchBuffer(deckId, audioBuffer) {
+  const { ctx } = getAudioContext();
+  const s = getScratchState(deckId);
+  s.buffers = audioBuffer
+    ? { fwd: audioBuffer, rev: reverseBuffer(ctx, audioBuffer) }
+    : null;
+}
+
+export function clearScratchBuffer(deckId) {
+  const s = getScratchState(deckId);
+  s.buffers = null;
+}
+
+/**
+ * Engage scratch mode. Mute the element-driven side of the deck chain so
+ * only buffer-slice playback is audible. Caller has already paused the
+ * <audio> element.
+ *
+ * `position` = current track time in seconds (where the platter "lands").
+ */
+export function enterScratchMode(deckId, position) {
+  const s = getScratchState(deckId);
+  if (!s.buffers) return false;
+  const chain = getDeckChain(deckId);
+  if (!chain || !chain.elementGain) return false;
+  s.pos = Math.max(0, position || 0);
+  s.preMuteVol = chain.elementGain.gain.value;
+  // Sharp mute: 5ms is enough to avoid click without smearing the cut.
+  const ctx = getAudioContext().ctx;
+  chain.elementGain.gain.setTargetAtTime(0, ctx.currentTime, 0.005);
+  s.active = true;
+  return true;
+}
+
+/**
+ * Apply a jog tick during scratch. `ticks` is signed — positive = forward.
+ * Each call plays a small slice (length proportional to |ticks|) at 1×
+ * playbackRate. Multiple slices stacking = the scratch sound.
+ *
+ * Uses fwd or rev buffer based on direction so backward sounds genuinely
+ * reversed (vocals + drums playing backward).
+ */
+export function scratchTick(deckId, ticks) {
+  const s = getScratchState(deckId);
+  if (!s.active || !s.buffers || ticks === 0) return;
+  const { ctx } = getAudioContext();
+  const chain = getDeckChain(deckId);
+  if (!chain || !chain.scratchInput) return;
+
+  // Same scale used by the visual jog: 128 ticks = 1.8s of audio.
+  const SEC_PER_TICK = 1.8 / 128;
+  const dt = ticks * SEC_PER_TICK;
+  const dir = dt >= 0 ? 1 : -1;
+  const buffer = dir > 0 ? s.buffers.fwd : s.buffers.rev;
+  const total = buffer.duration;
+
+  // Compute slice start. For reverse: we play in the reversed buffer
+  // starting at (total - pos), so a forward read in rev-buffer maps to a
+  // backward read in fwd-buffer.
+  let posInBuffer;
+  if (dir > 0) {
+    posInBuffer = Math.max(0, Math.min(total - 0.05, s.pos));
+  } else {
+    posInBuffer = Math.max(0, Math.min(total - 0.05, total - s.pos));
+  }
+  const sliceLen = Math.min(0.06, Math.max(0.01, Math.abs(dt)));
+
+  // Advance our virtual playhead — we're "consuming" `dt` seconds of audio
+  // per tick. Clamp to track bounds.
+  s.pos = Math.max(0, Math.min(total - 0.05, s.pos + dt));
+
+  // Fire-and-forget source. WebAudio cleans these up automatically.
+  try {
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    // Slight envelope to remove edge clicks on rapid stacking.
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, ctx.currentTime);
+    env.gain.linearRampToValueAtTime(1, ctx.currentTime + 0.002);
+    env.gain.setValueAtTime(1, ctx.currentTime + sliceLen - 0.002);
+    env.gain.linearRampToValueAtTime(0, ctx.currentTime + sliceLen);
+    src.connect(env);
+    env.connect(chain.scratchInput);
+    src.start(ctx.currentTime, posInBuffer, sliceLen);
+  } catch { /* noop on edge cases */ }
+}
+
+/**
+ * Release scratch. Restores element gain so normal HTML5 playback resumes
+ * audibly. Returns the final scratch position so the caller can apply it
+ * to the audio element's currentTime.
+ */
+export function exitScratchMode(deckId) {
+  const s = getScratchState(deckId);
+  if (!s.active) return null;
+  const chain = getDeckChain(deckId);
+  const ctx = getAudioContext().ctx;
+  if (chain?.elementGain && s.preMuteVol != null) {
+    chain.elementGain.gain.setTargetAtTime(s.preMuteVol, ctx.currentTime, 0.01);
+  }
+  s.active = false;
+  s.preMuteVol = null;
+  return s.pos;
+}
+
+export function isScratchActive(deckId) { return !!scratchState[deckId]?.active; }
+export function hasScratchBuffer(deckId) { return !!scratchState[deckId]?.buffers; }
 
 
 // Headphone helpers
