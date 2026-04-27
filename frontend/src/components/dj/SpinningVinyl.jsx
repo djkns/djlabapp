@@ -76,12 +76,38 @@ function SpinningVinyl({
   }, [onScratchMove, onScratchEnd]);
 
   const scratching = scratchAngle != null;
-  // While scratching: transform with absolute angle; otherwise let CSS animate.
-  // Apply externalAngle (MIDI jog) as an additive nudge when not scratching.
-  const transform = scratching
-    ? `rotate(${(scratchAngle * 180) / Math.PI}deg)`
-    : (externalAngle ? `rotate(${(externalAngle * 180) / Math.PI}deg)` : undefined);
-  const spinClass = (spinning && !scratching && !externalAngle) ? "vinyl-spin" : "";
+
+  // Drive the platter rotation entirely from JS (rAF) rather than relying on
+  // CSS animations that get cancelled whenever `transform` is set inline.
+  // 33⅓ RPM = 360° / 1.8s = ~3.49 rad/sec. Combined transform = base spin
+  // angle (when playing) + scratch override + jog nudge from MIDI.
+  const spinAngleRef = useRef(0);
+  const [renderAngle, setRenderAngle] = useState(0);
+  useEffect(() => {
+    let raf;
+    let last = performance.now();
+    const RPS = (33 + 1 / 3) / 60; // revolutions per second
+    const RAD_PER_SEC = RPS * 2 * Math.PI;
+    const tick = (now) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      if (spinning && !scratching) {
+        spinAngleRef.current += RAD_PER_SEC * dt;
+      }
+      setRenderAngle(spinAngleRef.current);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [spinning, scratching]);
+
+  // Combined transform — scratch overrides everything; otherwise auto-spin
+  // plus optional MIDI jog nudge.
+  let combinedAngle;
+  if (scratching) combinedAngle = scratchAngle;
+  else combinedAngle = renderAngle + (externalAngle || 0);
+  const transform = `rotate(${(combinedAngle * 180) / Math.PI}deg)`;
+  const spinClass = ""; // CSS animation no longer used — rAF drives rotation
 
   return (
     <div
