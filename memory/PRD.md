@@ -82,7 +82,7 @@ Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia eco
 - True reverse-audio scratch (deferred — UX risk)
 
 ### Known Limitations
-- **Scratch audio quality**: Web Audio API + HTML5 `<audio>` cannot produce truly authentic vinyl-scratch sound. Implemented hybrid AudioBufferSourceNode scratch engine with forward + sample-reversed buffers (Apr 2026 session). User feedback: "still sounds garbage". User chose to keep code as-is rather than revert. The code is in `audioEngine.js` (`enterScratchMode` / `scratchTick` / `exitScratchMode` / `setScratchBuffer`) and Deck.jsx handles the touch-driven entry/exit. Future iteration would need a higher-fidelity DSP path (e.g. proper rate-controlled streaming buffer node, or WASM-based scratch DSP) to match Rekordbox/Serato feel. Pitch-bend mode (subtle BPM nudge when wheel turns without touch) works correctly.
+- **Scratch audio fidelity**: Implemented a hybrid AudioBufferSourceNode scratch engine alongside the HTML5 `<audio>` playback path (Apr 2026 session) — pre-decodes each loaded track into forward + sample-reversed buffers, fires short slices on jog ticks while the platter is touched. The implementation works mechanically but the resulting audio doesn't reach professional DJ-platform fidelity (Rekordbox / Serato / Virtual DJ). Code retained for reference and future iteration. Pitch-bend mode (subtle BPM nudge when the wheel turns without a touch) works correctly. Higher fidelity will require either a WASM-based scratch DSP, a proper rate-controlled streaming buffer node, or a desktop-native rewrite.
 
 ### Refactoring
 - Break down `Deck.jsx` (>1200 lines) — extract jog engine + load pipeline into hooks
