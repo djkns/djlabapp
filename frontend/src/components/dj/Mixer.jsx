@@ -6,7 +6,7 @@ import {
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, enableMicWithStream, setMicVolume,
   enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled,
-  getDeckChain, DJ_MIC_CONSTRAINTS,
+  getDeckChain, DJ_MIC_CONSTRAINTS, getMicAnalyser,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
@@ -43,6 +43,42 @@ function ChannelVUInner({ analyser, tall = false }) {
 // Memoized so dragging a sibling fader doesn't re-reconcile the VU on every
 // onChange tick. The analyser ref is stable across renders, so memoization is safe.
 const ChannelVU = React.memo(ChannelVUInner);
+
+// Horizontal mic-input level meter. Polls the mic analyser and shows raw
+// input level so the user can verify samples are flowing BEFORE worrying
+// about output routing. Self-mounted only when the mic is enabled.
+function MicInputVU() {
+  const [level, setLevel] = useState(0);
+  useEffect(() => {
+    let raf;
+    const loop = () => {
+      const a = getMicAnalyser();
+      if (a) {
+        const buf = new Uint8Array(a.frequencyBinCount);
+        a.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        setLevel(Math.sqrt(sum / buf.length));
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const fill = Math.min(1, level * 4);
+  return (
+    <div data-testid="mic-input-vu" className="w-12 h-1.5 mt-1 bg-[#0c0c0c] rounded overflow-hidden border border-white/5">
+      <div
+        className="h-full"
+        style={{
+          width: `${fill * 100}%`,
+          background: "linear-gradient(to right, #22c55e 0%, #22c55e 55%, #eab308 75%, #FF1F1F 95%)",
+          transition: "width 40ms linear",
+        }}
+      />
+    </div>
+  );
+}
 
 // Channel strip: Gain → EQ(HIGH/MID/LOW) → Filter → Tempo fader (volume lives in its own row above the crossfader)
 function ChannelStrip({ deckId, deckLabel, chain }) {
@@ -492,6 +528,10 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
               testid="mic-volume"
               color="#FF9500"
             />
+            {/* Mic input level indicator — proves samples ARE flowing in.
+                If this bounces when you talk, mic is reaching the engine
+                and the master volume controls how loud it goes out. */}
+            {mic.enabled && <MicInputVU />}
           </div>
         </div>
       </div>

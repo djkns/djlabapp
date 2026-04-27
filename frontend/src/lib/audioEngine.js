@@ -260,6 +260,7 @@ export function getHeadphoneSinkId() { return hpSinkId; }
 let micStream = null;
 let micSource = null;
 let micGain = null;
+let micAnalyser = null;     // for the mic input VU readout
 // Hidden audio element used to "pump" the mic MediaStream. Firefox has a
 // long-standing bug where MediaStreamAudioSourceNode delivers no samples
 // unless the underlying stream is also consumed by an HTMLMediaElement.
@@ -267,6 +268,9 @@ let micGain = null;
 // itself — only via the WebAudio graph) and never play it through speakers.
 //   https://bugzilla.mozilla.org/show_bug.cgi?id=1240270
 let micPumpEl = null;
+
+/** Subscribe to the mic analyser; null when mic is not active. */
+export function getMicAnalyser() { return micAnalyser; }
 
 /**
  * DJ-grade mic constraints: disable browser-side processing so the mic feed
@@ -294,13 +298,14 @@ export async function enableMic(enabled) {
   } else {
     try { micSource?.disconnect(); } catch { /* ignore */ }
     try { micGain?.disconnect(); } catch { /* ignore */ }
+    try { micAnalyser?.disconnect(); } catch { /* ignore */ }
     if (micStream) micStream.getTracks().forEach((t) => t.stop());
     if (micPumpEl) {
       try { micPumpEl.pause(); } catch { /* noop */ }
       micPumpEl.srcObject = null;
       micPumpEl = null;
     }
-    micStream = null; micSource = null; micGain = null;
+    micStream = null; micSource = null; micGain = null; micAnalyser = null;
     return false;
   }
 }
@@ -316,6 +321,12 @@ export function enableMicWithStream(stream) {
     micSource = ctx.createMediaStreamSource(stream);
     micGain = ctx.createGain();
     micGain.gain.value = 0.8;
+    // Pre-gain analyser so the user sees their actual MIC INPUT level
+    // (independent of the MIC VOL knob position). Useful as a diagnostic:
+    // VU moves = mic samples are flowing; VU flat = pump fix didn't help.
+    micAnalyser = ctx.createAnalyser();
+    micAnalyser.fftSize = 1024;
+    micSource.connect(micAnalyser);
     micSource.connect(micGain);
     micGain.connect(masterGain);
 
@@ -336,7 +347,7 @@ export function enableMicWithStream(stream) {
   } catch (err) {
     console.error("enableMicWithStream failed", err);
     stream.getTracks().forEach((t) => t.stop());
-    micStream = null; micSource = null; micGain = null;
+    micStream = null; micSource = null; micGain = null; micAnalyser = null;
     if (micPumpEl) { try { micPumpEl.pause(); } catch { /* noop */ } micPumpEl.srcObject = null; micPumpEl = null; }
     return false;
   }
