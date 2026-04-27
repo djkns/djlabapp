@@ -365,7 +365,42 @@ export default function Deck({ id, label, accent }) {
                 }
                 if (Object.keys(patch).length) setDeck(id, patch);
               }
-              if (cached?.bpm && cached?.musical_key && !needsTagRead) return; // BPM + key + tags all cached → skip everything
+              if (cached?.bpm && cached?.musical_key && !needsTagRead) {
+                // BPM + key + tags all cached → skip BPM detect entirely.
+                // BUT: still verify wavesurfer actually rendered the
+                // waveform. The recurring "blank deck window" bug shows
+                // up here too — wavesurfer reports loaded but renders
+                // nothing. Watch wsLoaded then check duration; if
+                // missing, force-load via peaks (using a fresh decode).
+                (async () => {
+                  try {
+                    await wsLoaded;
+                    const wsDur = wsRef.current?.getDuration?.() || 0;
+                    const cur2 = useDJStore.getState()[id].track;
+                    if (wsDur >= 0.5 || !wsRef.current || cur2?.key !== trackKey) return;
+                    console.warn(`[ws ${id}] cached-path: no duration, forcing peaks render`);
+                    const resp = await fetch(playUrl);
+                    if (!resp.ok) return;
+                    const arr = await resp.arrayBuffer();
+                    const ac = getAudioContext().ctx;
+                    const buf2 = await ac.decodeAudioData(arr.slice(0));
+                    if (useDJStore.getState()[id].track?.key !== trackKey) return;
+                    const peaks = [];
+                    for (let i = 0; i < buf2.numberOfChannels; i++) peaks.push(buf2.getChannelData(i));
+                    const el = audioElRef.current;
+                    const t = el?.currentTime || 0;
+                    const wasPlaying = el ? !el.paused : false;
+                    await wsRef.current.load(playUrl, peaks, buf2.duration).catch(() => {});
+                    if (el) {
+                      try { el.currentTime = t; } catch { /* noop */ }
+                      if (wasPlaying) el.play().catch(() => {});
+                    }
+                  } catch (err) {
+                    console.warn(`[ws ${id}] cached-path peaks-fallback threw`, err);
+                  }
+                })();
+                return;
+              }
             }
           } catch { /* network noise — fall through */ }
 
@@ -421,22 +456,37 @@ export default function Deck({ id, label, accent }) {
             buf = await ac.decodeAudioData(arr.slice(0));
           }
           // GUARANTEED WAVEFORM FALLBACK: if wavesurfer's own load/decode
-          // failed (network race / abort / quirky CORS), feed it the peaks
-          // we just decoded. ws.load(url, peaks, duration) skips wavesurfer's
-          // internal fetch entirely and renders directly from the data we
-          // already have. This is what fixes the recurring "blank deck
-          // window" issue regardless of root cause.
+          // didn't actually render audio, feed it the peaks we just
+          // decoded. Use `getDuration()` as the canonical signal (NOT
+          // `getDecodedData()` — that returns truthy in cases where the
+          // canvas is still blank). Duration is binary: wavesurfer either
+          // thinks it has a loaded media or it doesn't.
+          //
+          // ws.load(url, peaks, duration) skips wavesurfer's internal
+          // fetch entirely and renders directly from data we already have.
           try {
-            const wsHas = !!wsRef.current?.getDecodedData?.();
+            const wsDur = wsRef.current?.getDuration?.() || 0;
             const cur = useDJStore.getState()[id].track;
-            if (!wsHas && wsRef.current && cur?.key === trackKey) {
+            if (wsDur < 0.5 && wsRef.current && cur?.key === trackKey) {
+              console.warn(`[ws ${id}] no duration after load (${wsDur}s) — forcing peaks render`);
               const peaks = [];
               for (let i = 0; i < buf.numberOfChannels; i++) {
                 peaks.push(buf.getChannelData(i));
               }
+              // Preserve current playhead (and play state) across the
+              // forced re-load so we don't yank a playing track back to 0.
+              const el = audioElRef.current;
+              const t = el?.currentTime || 0;
+              const wasPlaying = el ? !el.paused : false;
               await wsRef.current.load(playUrl, peaks, buf.duration).catch((err) => {
                 console.warn(`[ws ${id}] peaks-fallback load failed`, err);
               });
+              if (el) {
+                try { el.currentTime = t; } catch { /* noop */ }
+                if (wasPlaying) {
+                  el.play().catch(() => {});
+                }
+              }
             }
           } catch (err) {
             console.warn(`[ws ${id}] peaks-fallback threw`, err);
