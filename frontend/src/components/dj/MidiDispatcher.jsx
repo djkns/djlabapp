@@ -98,9 +98,26 @@ export default function MidiDispatcher() {
       }
 
       if (isJogControl(ctrl)) {
-        // Jog ticks must NOT be coalesced — every tick is meaningful for
-        // scratch precision. Fire instantly.
-        const delta = data2 - 64;
+        // Two encodings supported:
+        //
+        //  1. CC (`type === 0xB0`, status 176): relative offset-64 — value
+        //     64 idle, >64 forward, <64 backward. Most controllers.
+        //
+        //  2. Pitch Bend (`type === 0xE0`, status 224): high-precision
+        //     14-bit, used by Hercules T7 (and some others). The full
+        //     value is `(data2 << 7) | data1`, ranging 0..16383 with
+        //     8192 as center. We convert to a small signed delta of
+        //     ticks per message — empirically T7 emits ~1 message per
+        //     1/128th rotation tick, so `(value - 8192) / 64` gives a
+        //     delta on the same scale as the CC path.
+        const t = e.detail.type;
+        let delta;
+        if (t === 0xE0) {
+          const value14 = (e.detail.data2 << 7) | e.detail.data1;
+          delta = Math.round((value14 - 8192) / 64);
+        } else {
+          delta = data2 - 64;
+        }
         if (delta === 0) return;
         window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, value: delta } }));
         return;
