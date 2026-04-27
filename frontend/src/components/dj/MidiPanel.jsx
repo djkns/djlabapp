@@ -551,9 +551,24 @@ export default function MidiPanel({ open, onClose }) {
                       return (
                         <div key={c.id} className="flex items-center gap-2 px-2 py-1 border-b border-white/[0.04] hover:bg-white/[0.02]">
                           <span className="text-xs text-white truncate flex-1 min-w-0">{c.label}</span>
-                          <span className="font-mono-dj text-[10px] text-[#A1A1AA] w-20 text-right shrink-0">
-                            {m ? m.signature : "—"}
-                          </span>
+                          <SignatureEditor
+                            mapping={m}
+                            onSave={(sig) => {
+                              const parsed = parseSignature(sig);
+                              if (!parsed) {
+                                toast.error("Invalid signature", { description: "Format: type:data1:channel  e.g.  224:0:0" });
+                                return;
+                              }
+                              // De-duplicate: if same sig is already used elsewhere, clear that one first
+                              const collision = Object.entries(midi.mappings).find(
+                                ([id, mm]) => mm.signature === parsed.signature && id !== c.id
+                              );
+                              if (collision) clearMidiMapping(collision[0]);
+                              setMidiMapping(c.id, parsed);
+                              flushDJStore();
+                              toast.success("Mapping saved", { description: c.id, duration: 1200 });
+                            }}
+                          />
                           <div className="flex gap-1 shrink-0">
                             <button
                               onClick={() => setMidi({ learning: learning ? null : c.id })}
@@ -583,5 +598,85 @@ export default function MidiPanel({ open, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Parse a manually-entered signature string into a mapping object.
+ * Accepts the same format the LIVE MONITOR / display already uses:
+ *   "type:data1:channel"  e.g.  "224:0:0"  (Pitch Bend, controller 0, ch 1)
+ *                         e.g.  "176:9:1"  (CC, controller 9, ch 2)
+ * Type can be hex too: "0xE0:0:0".
+ * Returns null if format is bad.
+ */
+function parseSignature(input) {
+  if (!input) return null;
+  const cleaned = input.trim().replace(/\s+/g, "");
+  const parts = cleaned.split(/[:.\-,]/);
+  if (parts.length !== 3) return null;
+  const num = (s) => {
+    if (s == null || s === "") return NaN;
+    return s.toLowerCase().startsWith("0x") ? parseInt(s, 16) : parseInt(s, 10);
+  };
+  const type = num(parts[0]);
+  const data1 = num(parts[1]);
+  const channel = num(parts[2]);
+  if ([type, data1, channel].some((n) => !Number.isFinite(n))) return null;
+  // Type must be a status nibble: 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0
+  if (![0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0].includes(type)) return null;
+  if (data1 < 0 || data1 > 127) return null;
+  if (channel < 0 || channel > 15) return null;
+  return {
+    signature: `${type}:${data1}:${channel}`,
+    type, data1, channel,
+  };
+}
+
+/**
+ * Inline editable signature cell. Click to edit, Enter to save, Esc to
+ * cancel. Provides the manual-mapping escape hatch when LEARN can't or
+ * won't pick the right MIDI message.
+ */
+function SignatureEditor({ mapping, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const inputRef = useRef(null);
+
+  const begin = () => {
+    setValue(mapping?.signature || "");
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+  const commit = () => {
+    setEditing(false);
+    if (value && value !== (mapping?.signature || "")) onSave(value);
+  };
+  const cancel = () => { setEditing(false); setValue(""); };
+
+  if (!editing) {
+    return (
+      <button
+        onClick={begin}
+        title="Click to type a signature manually (e.g. 224:0:0)"
+        className="font-mono-dj text-[10px] text-[#A1A1AA] w-24 text-right shrink-0 hover:text-white hover:underline cursor-text"
+      >
+        {mapping ? mapping.signature : "— set —"}
+      </button>
+    );
+  }
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={value}
+      placeholder="224:0:0"
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        else if (e.key === "Escape") cancel();
+      }}
+      className="font-mono-dj text-[10px] text-white bg-black/60 border border-[#FF1F1F]/60 rounded px-1 py-0.5 w-24 text-right shrink-0 focus:outline-none focus:border-[#FF1F1F]"
+    />
   );
 }
