@@ -261,13 +261,6 @@ let micStream = null;
 let micSource = null;
 let micGain = null;
 let micAnalyser = null;     // for the mic input VU readout
-// Hidden audio element used to "pump" the mic MediaStream. Firefox has a
-// long-standing bug where MediaStreamAudioSourceNode delivers no samples
-// unless the underlying stream is also consumed by an HTMLMediaElement.
-// We keep this element muted (so we don't hear the raw mic via the element
-// itself — only via the WebAudio graph) and never play it through speakers.
-//   https://bugzilla.mozilla.org/show_bug.cgi?id=1240270
-let micPumpEl = null;
 
 /** Subscribe to the mic analyser; null when mic is not active. */
 export function getMicAnalyser() { return micAnalyser; }
@@ -300,11 +293,6 @@ export async function enableMic(enabled) {
     try { micGain?.disconnect(); } catch { /* ignore */ }
     try { micAnalyser?.disconnect(); } catch { /* ignore */ }
     if (micStream) micStream.getTracks().forEach((t) => t.stop());
-    if (micPumpEl) {
-      try { micPumpEl.pause(); } catch { /* noop */ }
-      micPumpEl.srcObject = null;
-      micPumpEl = null;
-    }
     micStream = null; micSource = null; micGain = null; micAnalyser = null;
     return false;
   }
@@ -330,26 +318,11 @@ export function enableMicWithStream(stream) {
     micSource.connect(micGain);
     micGain.connect(masterGain);
 
-    // Firefox-only workaround: bind the stream to a muted hidden <audio>
-    // element so the browser actually pumps samples through the
-    // MediaStreamAudioSourceNode. Chrome works without this; Firefox does
-    // not. Belt-and-suspenders silencing: mute=true AND volume=0, set
-    // BEFORE srcObject (so a fast Firefox build can never emit a single
-    // sample to speakers). play() is called manually instead of relying
-    // on autoplay.
-    micPumpEl = new Audio();
-    micPumpEl.muted = true;
-    micPumpEl.volume = 0;
-    micPumpEl.autoplay = false;
-    micPumpEl.srcObject = stream;
-    try { micPumpEl.play().catch(() => {}); } catch { /* noop */ }
-
     return true;
   } catch (err) {
     console.error("enableMicWithStream failed", err);
     stream.getTracks().forEach((t) => t.stop());
     micStream = null; micSource = null; micGain = null; micAnalyser = null;
-    if (micPumpEl) { try { micPumpEl.pause(); } catch { /* noop */ } micPumpEl.srcObject = null; micPumpEl = null; }
     return false;
   }
 }
