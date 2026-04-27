@@ -301,7 +301,13 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
     // if that throws. Either way the gesture is preserved.
     let micPromise = navigator.mediaDevices.getUserMedia({ audio: DJ_MIC_CONSTRAINTS })
       .catch((err) => {
-        if (err?.name === "OverconstrainedError" || err?.name === "TypeError" || err?.name === "NotReadableError") {
+        // Fall back to plain `{ audio: true }` on any error class where the
+        // strict constraints could plausibly be the cause. Firefox in
+        // particular can throw NotFoundError on the strict constraint set
+        // even when a working mic exists. Without this fallback the user
+        // sees "No microphone device found" with a perfectly fine mic.
+        const fallbackErrors = ["OverconstrainedError", "TypeError", "NotReadableError", "NotFoundError"];
+        if (fallbackErrors.includes(err?.name)) {
           console.warn("[mic] strict constraints rejected, falling back to audio: true", err.name);
           return navigator.mediaDevices.getUserMedia({ audio: true });
         }

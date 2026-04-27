@@ -12,21 +12,30 @@ export default function HeadphoneSection() {
   const hp = useDJStore((s) => s.hp);
   const setHp = useDJStore((s) => s.setHp);
   const [devices, setDevices] = useState([]);
-  const [needsPerm, setNeedsPerm] = useState(false);
+  const [needsPerm, setNeedsPerm] = useState(true);
 
-  // Enumerate output devices (requires user gesture + permission on some browsers)
+  // Enumerate output devices. Firefox returns EMPTY device labels (and
+  // sometimes empty list entirely) until getUserMedia has been granted at
+  // least once for this origin. We DO NOT auto-enumerate on mount because
+  // some Firefox builds will then keep returning a stale empty list even
+  // after permission is granted. Defer until the user explicitly grants
+  // permission via the button below.
   const refreshDevices = async () => {
     try {
       const list = await navigator.mediaDevices.enumerateDevices();
       const outs = list.filter((d) => d.kind === "audiooutput");
-      if (outs.length === 0 || !outs[0].label) setNeedsPerm(true);
+      // If labels are empty, permission still isn't granted at the device-
+      // info level; surface the grant button.
+      if (outs.length === 0 || !outs[0].label) {
+        setNeedsPerm(true);
+      } else {
+        setNeedsPerm(false);
+      }
       setDevices(outs);
     } catch {
       setNeedsPerm(true);
     }
   };
-
-  useEffect(() => { refreshDevices(); }, []);
 
   // Sync HP state → audio engine
   useEffect(() => { setHeadphoneMix(hp.mix); }, [hp.mix]);
