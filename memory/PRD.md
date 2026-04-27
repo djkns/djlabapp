@@ -72,16 +72,20 @@ Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia eco
 
 ## Roadmap
 ### P1 — High value, pending
-- AzuraCast "Now Playing" metadata push (`/api/stream/metadata`)
 - FX Rack expansion (Filter Sweep, Bitcrush, Echo Out)
+- ✅ AzuraCast "Now Playing" metadata push (shipped Apr 2026)
 
 ### P2 — Backlog
 - Pad Mode tabs (Hot Cue / Loop Roll / Sampler)
-- Cloud export of recorded mixes back to S3 `mixes/`
+- Cloud Export — BYOK destinations (Dropbox / GDrive / OneDrive) for other DJs (deferred until ready to onboard others)
+- PWA install (deferred — until app feels final)
 - True reverse-audio scratch (deferred — UX risk)
 
+### Known Limitations
+- **Scratch audio quality**: Web Audio API + HTML5 `<audio>` cannot produce truly authentic vinyl-scratch sound. Implemented hybrid AudioBufferSourceNode scratch engine with forward + sample-reversed buffers (Apr 2026 session). User feedback: "still sounds garbage". User chose to keep code as-is rather than revert. The code is in `audioEngine.js` (`enterScratchMode` / `scratchTick` / `exitScratchMode` / `setScratchBuffer`) and Deck.jsx handles the touch-driven entry/exit. Future iteration would need a higher-fidelity DSP path (e.g. proper rate-controlled streaming buffer node, or WASM-based scratch DSP) to match Rekordbox/Serato feel. Pitch-bend mode (subtle BPM nudge when wheel turns without touch) works correctly.
+
 ### Refactoring
-- Break down `Deck.jsx` (>800 lines) — extract playback hooks
+- Break down `Deck.jsx` (>1200 lines) — extract jog engine + load pipeline into hooks
 
 ## Critical Notes
 - **Audio performance**: Do NOT set `latencyHint: "interactive"` on AudioContext (causes UI lag).
