@@ -333,14 +333,15 @@ export function enableMicWithStream(stream) {
     // Firefox-only workaround: bind the stream to a muted hidden <audio>
     // element so the browser actually pumps samples through the
     // MediaStreamAudioSourceNode. Chrome works without this; Firefox does
-    // not. The element is muted so it never reaches speakers itself —
-    // audio only arrives via the WebAudio graph through masterGain.
+    // not. Belt-and-suspenders silencing: mute=true AND volume=0, set
+    // BEFORE srcObject (so a fast Firefox build can never emit a single
+    // sample to speakers). play() is called manually instead of relying
+    // on autoplay.
     micPumpEl = new Audio();
     micPumpEl.muted = true;
-    micPumpEl.autoplay = true;
+    micPumpEl.volume = 0;
+    micPumpEl.autoplay = false;
     micPumpEl.srcObject = stream;
-    // play() is idempotent and safe; ignore if blocked (autoplay policy
-    // doesn't usually block muted streams, but be defensive).
     try { micPumpEl.play().catch(() => {}); } catch { /* noop */ }
 
     return true;
