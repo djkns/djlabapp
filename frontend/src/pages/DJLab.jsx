@@ -14,6 +14,7 @@ import StreamConfigDialog from "@/components/dj/StreamConfigDialog";
 import ExportMixDialog from "@/components/dj/ExportMixDialog";
 import { resumeAudioContext } from "@/lib/audioEngine";
 import { subscribeStreamStatus } from "@/lib/streamService";
+import { startNowPlayingWatcher, stopNowPlayingWatcher } from "@/lib/nowPlaying";
 import { requestMidi, listMidiInputs, setActiveInput, addStateChangeListener, getActiveInputId } from "@/lib/midi";
 import { useDJStore } from "@/store/djStore";
 
@@ -63,6 +64,14 @@ export default function DJLab() {
   }, []);
 
   useEffect(() => subscribeStreamStatus((s) => setStreaming(!!s.connected)), []);
+
+  // Start AzuraCast Now-Playing watcher — pushes title/artist of the
+  // currently audible deck to AzuraCast while a live broadcast is active.
+  // No-ops silently when disabled / not configured / not streaming.
+  useEffect(() => {
+    startNowPlayingWatcher();
+    return () => stopNowPlayingWatcher();
+  }, []);
 
   useEffect(() => {
     fetch(`${process.env.REACT_APP_BACKEND_URL}/api/`)

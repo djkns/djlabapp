@@ -487,6 +487,63 @@ _active_streams: dict[str, subprocess.Popen] = {}
 from urllib.parse import quote as urlquote
 
 
+# -------------------- AzuraCast Now-Playing proxy --------------------
+#
+# Proxies a "now playing" metadata update to an AzuraCast server. The API
+# key is sent from the browser (stored in localStorage there) but routed
+# through the backend so CORS and request-side validation are handled
+# server-side. Endpoint matches:
+#   POST {base_url}/api/station/{station_id}/nowplaying/update
+#   Headers: X-API-Key: {key}
+#   Body:    {"title": "...", "artist": "..."}
+#
+class NowPlayingPayload(BaseModel):
+    base_url: str    # e.g. "https://djsandmc.media"
+    api_key: str
+    station_id: int
+    title: str | None = None
+    artist: str | None = None
+
+
+@api_router.post("/azuracast/nowplaying")
+async def azuracast_nowplaying(payload: NowPlayingPayload):
+    base = payload.base_url.rstrip("/")
+    if not (base.startswith("http://") or base.startswith("https://")):
+        base = "https://" + base
+    url = f"{base}/api/station/{payload.station_id}/nowplaying/update"
+    body = {}
+    if payload.title is not None:
+        body["title"] = payload.title
+    if payload.artist is not None:
+        body["artist"] = payload.artist
+
+    def _do_post():
+        return requests.post(
+            url,
+            headers={
+                "X-API-Key": payload.api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json=body,
+            timeout=10.0,
+        )
+    try:
+        r = await run_in_threadpool(_do_post)
+        return {
+            "status": r.status_code,
+            "ok": 200 <= r.status_code < 300,
+            "response": (r.text or "")[:500],
+        }
+    except requests.exceptions.Timeout:
+        # AzuraCast returns a Liquidsoap-telnet-timeout (port 8004) when no
+        # live source is connected. Surface that as a clear message rather
+        # than a generic 502 so the user knows to start the broadcast first.
+        return {"status": 408, "ok": False, "response": "AzuraCast timed out talking to Liquidsoap. Start the live broadcast first, then push now-playing."}
+    except Exception as e:
+        return {"status": 502, "ok": False, "response": str(e)[:500]}
+
+
 def _build_icecast_url(user: str, password: str, host: str, port: int, mount: str) -> str:
     # Ensure mount starts with '/'
     m = mount if mount.startswith('/') else '/' + mount

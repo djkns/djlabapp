@@ -1,7 +1,8 @@
 import { useEffect, useState, cloneElement, Children } from "react";
-import { Radio, X, Info } from "lucide-react";
+import { Radio, X, Info, Send } from "lucide-react";
 import { toast } from "sonner";
 import { startStream, stopStream, subscribeStreamStatus, isStreaming } from "@/lib/streamService";
+import { loadConfig as loadNP, saveConfig as saveNP, pushNow as pushNP, reloadConfig as reloadNP } from "@/lib/nowPlaying";
 
 const STORAGE_KEY = "djlab.streamConfig";
 const DEFAULT_CFG = {
@@ -29,10 +30,35 @@ export default function StreamConfigDialog({ open, onClose }) {
   const [cfg, setCfg] = useState(loadCfg);
   const [status, setStatus] = useState({ connected: false, errorText: null, ffmpegLines: [] });
   const [busy, setBusy] = useState(false);
+  const [np, setNp] = useState(loadNP);
+  const [npBusy, setNpBusy] = useState(false);
 
   useEffect(() => subscribeStreamStatus(setStatus), []);
 
   if (!open) return null;
+
+  const saveNpAndApply = (patch) => {
+    const next = { ...np, ...patch };
+    setNp(next);
+    saveNP(next);
+    reloadNP();
+  };
+
+  const testNowPlaying = async () => {
+    setNpBusy(true);
+    try {
+      const r = await pushNP();
+      if (r?.ok) {
+        toast.success("Now-Playing pushed", { description: "Listeners' players should update within a few seconds." });
+      } else if (r?.status === 408) {
+        toast.error("AzuraCast couldn't reach Liquidsoap", { description: "Start the live broadcast first, then push now-playing." });
+      } else {
+        toast.error("Now-Playing failed", { description: r?.response || "No audible deck — load a track and bring up the volume." });
+      }
+    } finally {
+      setNpBusy(false);
+    }
+  };
 
   const save = (patch) => {
     const next = { ...cfg, ...patch };
@@ -201,6 +227,67 @@ export default function StreamConfigDialog({ open, onClose }) {
             </pre>
           </details>
         )}
+
+        {/* AzuraCast Now-Playing pusher */}
+        <div className="mt-4 pt-3 border-t border-white/10" data-testid="nowplaying-section">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-display font-bold tracking-tight text-sm text-[#FF9500]">
+              Now-Playing → AzuraCast
+            </span>
+            <label className="flex items-center gap-2 text-[10px] tracking-[0.2em] uppercase cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={np.enabled}
+                onChange={(e) => saveNpAndApply({ enabled: e.target.checked })}
+                data-testid="nowplaying-enabled"
+                className="accent-[#FF9500]"
+              />
+              <span className={np.enabled ? "text-[#FF9500]" : "text-[#A1A1AA]"}>
+                {np.enabled ? "Auto-push ON" : "Auto-push OFF"}
+              </span>
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-[11px]">
+            <Field label="Base URL">
+              <input
+                type="text" value={np.base_url}
+                onChange={(e) => saveNpAndApply({ base_url: e.target.value })}
+                data-testid="nowplaying-base-url"
+                placeholder="djsandmc.media"
+              />
+            </Field>
+            <Field label="API Key">
+              <input
+                type="password" value={np.api_key}
+                onChange={(e) => saveNpAndApply({ api_key: e.target.value })}
+                data-testid="nowplaying-api-key"
+                placeholder="xxxx:xxxx"
+                autoComplete="new-password"
+              />
+            </Field>
+            <Field label="Station ID">
+              <input
+                type="number" value={np.station_id}
+                onChange={(e) => saveNpAndApply({ station_id: parseInt(e.target.value, 10) || 1 })}
+                data-testid="nowplaying-station-id"
+                min={1}
+              />
+            </Field>
+          </div>
+          <button
+            type="button"
+            onClick={testNowPlaying}
+            disabled={npBusy || !np.api_key}
+            data-testid="nowplaying-test"
+            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded border border-[#FF9500]/40 text-[10px] tracking-[0.22em] uppercase font-bold text-[#FF9500] hover:bg-[#FF9500]/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Send className="w-3 h-3" />
+            {npBusy ? "Pushing…" : "Push current track now"}
+          </button>
+          <div className="mt-2 text-[10px] text-[#52525B] italic">
+            Auto-pushes the title + artist of the audible deck (volume × crossfader) while the live stream is active. Need a live source connected — AzuraCast can't accept metadata for an idle station.
+          </div>
+        </div>
 
         <div className="mt-4 flex items-center gap-2">
           {isStreaming() ? (
