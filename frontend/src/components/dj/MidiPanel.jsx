@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Gamepad2, Plug, PlugZap, Activity, Check, ChevronDown, ChevronRight, Download, Upload } from "lucide-react";
 import { useDJStore, flushDJStore } from "@/store/djStore";
 import { toast } from "sonner";
@@ -172,11 +172,22 @@ export default function MidiPanel({ open, onClose }) {
     return () => window.removeEventListener("djlab:midi", h);
   }, [open, midi.mappings]);
 
+  // Build a flat id → kind lookup so the learn-handler can specialize per-
+  // control. Specifically: jog wheels need to ignore the touch-CC chatter
+  // that fires the moment the user's hand approaches the platter, and
+  // wait for the actual rotation Pitch Bend message.
+  const controlKindById = useMemo(() => {
+    const m = {};
+    for (const g of MIDI_GROUPS) for (const c of g.controls) m[c.id] = c.kind;
+    return m;
+  }, []);
+
   // Learn: sample messages for 500ms after first hit, pick the signature with
   // the most messages (= the one the user is actively moving). Filters out the
   // controller's idle / LED / status chatter that would otherwise be captured first.
   useEffect(() => {
     if (!midi.learning) return;
+    const learningKind = controlKindById[midi.learning];
     const counts = {};
     const samples = {};
     let firstTs = null;
@@ -212,6 +223,24 @@ export default function MidiPanel({ open, onClose }) {
     };
 
     const handler = (e) => {
+      // Specialization: when learning a jog wheel, IGNORE CC messages
+      // entirely. The Hercules T7 (and most controllers with touch-
+      // sensitive platters) emits a touch-CC the moment a finger gets
+      // near the wheel — which arrives before the rotation Pitch Bend
+      // and would otherwise win the "most messages in 500ms" race. By
+      // accepting only Pitch Bend (0xE0) or Note On (0x90, used by some
+      // older controllers as a relative encoder), we always lock onto
+      // the actual rotation source.
+      if (learningKind === "jog" && e.detail.type !== 0xE0 && e.detail.type !== 0x90) {
+        return;
+      }
+      // Specialization: when learning a button (incl. platter touch),
+      // IGNORE Pitch Bend — only CC and Note On count. Stops the jog-
+      // rotation Pitch Bend stream from accidentally getting captured
+      // when the user's hand brushes the wheel.
+      if (learningKind === "button" && e.detail.type !== 0xB0 && e.detail.type !== 0x90) {
+        return;
+      }
       const sig = midiSignature(e.detail);
       counts[sig] = (counts[sig] || 0) + 1;
       samples[sig] = e.detail;
@@ -235,7 +264,7 @@ export default function MidiPanel({ open, onClose }) {
       if (finalizeTimer) clearTimeout(finalizeTimer);
       window.removeEventListener("djlab:midi", handler);
     };
-  }, [midi.learning, midi.mappings, setMidiMapping, clearMidiMapping, setMidi]);
+  }, [midi.learning, midi.mappings, setMidiMapping, clearMidiMapping, setMidi, controlKindById]);
 
   const connect = (deviceId) => {
     if (!deviceId) return;
