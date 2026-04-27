@@ -223,6 +223,8 @@ export default function Deck({ id, label, accent }) {
   const bendLoopRunningRef = useRef(false);
   const pendingScratchRef = useRef(0);      // accumulated scratch seek (sec)
   const scratchFlushRafRef = useRef(0);
+  const scratchSavedRef = useRef(null);     // saved playback state during scratch
+  const touchFailsafeTimerRef = useRef(null);
   const handleJogRef = useRef(null);
   const handlePlatterTouchRef = useRef(null);
 
@@ -286,6 +288,16 @@ export default function Deck({ id, label, accent }) {
         if (!scratchFlushRafRef.current) {
           scratchFlushRafRef.current = requestAnimationFrame(flushScratch);
         }
+        // Refresh failsafe — active scratching keeps the touch alive
+        if (platterTouchedRef.current && touchFailsafeTimerRef.current) {
+          clearTimeout(touchFailsafeTimerRef.current);
+          touchFailsafeTimerRef.current = setTimeout(() => {
+            if (platterTouchedRef.current) {
+              console.warn(`[jog ${id}] platter touch failsafe — no activity 1.5s, auto-releasing`);
+              handlePlatterTouchRef.current?.(false);
+            }
+          }, 1500);
+        }
       } else {
         // PITCH BEND mode.
         bendRef.current = Math.max(-BEND_MAX, Math.min(BEND_MAX, bendRef.current + ticks * BEND_PER_TICK));
@@ -303,24 +315,56 @@ export default function Deck({ id, label, accent }) {
       setPlatterTouched(pressed);
       const el = audioElRef.current;
       if (!el) return;
+
+      // Failsafe: auto-release after 1.5s. Some controllers (and some
+      // MIDI mappings) don't reliably send a "release" message — without
+      // this guard, scratch mode could get stuck ON and lock playback.
+      if (touchFailsafeTimerRef.current) {
+        clearTimeout(touchFailsafeTimerRef.current);
+        touchFailsafeTimerRef.current = null;
+      }
+
       if (pressed) {
-        // Engage scratch — kill any in-flight bend and reset to base rate
-        // so scratching doesn't fight against a residual bend.
+        // Engage scratch — kill any in-flight bend, pause audio so the
+        // wheel is the ONLY thing driving playhead movement (real DJ
+        // platter behavior — without pausing, our seeks fight playback
+        // and you get the "platter doesn't turn" feel).
         bendRef.current = 0;
         const tempoPct = useDJStore.getState()[id].tempoPct;
-        el.playbackRate = 1 + tempoPct / 100;
+        scratchSavedRef.current = {
+          rate: 1 + tempoPct / 100,
+          wasPlaying: !el.paused,
+        };
+        if (!el.paused) {
+          try { el.pause(); } catch { /* noop */ }
+        }
+        // Failsafe timer
+        touchFailsafeTimerRef.current = setTimeout(() => {
+          if (platterTouchedRef.current) {
+            console.warn(`[jog ${id}] platter touch failsafe — no release within 1.5s, auto-releasing`);
+            handlePlatterTouchRef.current?.(false);
+          }
+        }, 1500);
       } else {
-        // Release — flush any leftover scratch deltas, no bend triggered.
+        // Release — flush leftover scratch deltas, then resume playback
+        // if it was playing when we engaged.
         if (scratchFlushRafRef.current) {
           cancelAnimationFrame(scratchFlushRafRef.current);
           scratchFlushRafRef.current = 0;
           flushScratch();
         }
+        const saved = scratchSavedRef.current;
+        if (saved && saved.wasPlaying) {
+          el.playbackRate = saved.rate;
+          el.play().catch(() => {});
+        }
+        scratchSavedRef.current = null;
       }
     };
 
     return () => {
       if (scratchFlushRafRef.current) cancelAnimationFrame(scratchFlushRafRef.current);
+      if (touchFailsafeTimerRef.current) clearTimeout(touchFailsafeTimerRef.current);
       handleJogRef.current = null;
       handlePlatterTouchRef.current = null;
     };
