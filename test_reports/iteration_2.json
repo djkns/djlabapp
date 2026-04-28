@@ -1,0 +1,39 @@
+{
+  "summary": "Tested HotCueMarkers.jsx P0 fix end-to-end on live URL https://djlab-neon.preview.emergentagent.com. Loaded real S3 track 'Brown Sugar' (262.7s) into Deck A, set hot cues, and exercised every marker interaction. All 6 critical interactions PASS: × delete, right-click delete, Shift+drag move, Alt+drag move, plain click preserves marker (no accidental delete), and Shift+click no-drag is a no-op.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {"name": "× badge appears on hover and deletes cue (slot 1)", "result": "PASS", "evidence": "deckA.hotCues[0] -> null after click on [data-testid=deck-deckA-marker-1-delete]"},
+    {"name": "Right-click on stem deletes cue (slot 2)", "result": "PASS", "evidence": "deckA.hotCues[1] -> null after contextmenu; no browser context menu shown"},
+    {"name": "Shift+drag repositions cue (slot 1)", "result": "PASS", "evidence": "cue moved from 1.00s -> 1.83s after Shift+drag of ~100px on visible marker"},
+    {"name": "Alt+drag repositions cue (slot 2)", "result": "PASS", "evidence": "cue moved from 2.00s -> 2.67s after Alt+drag of ~80px"},
+    {"name": "Plain click on marker does NOT delete (still seeks)", "result": "PASS", "evidence": "cue value unchanged after plain pointerdown/up on marker"},
+    {"name": "Shift+click without movement is a no-op (no accidental seek/move)", "result": "PASS", "evidence": "cue value unchanged"},
+    {"name": "Markers render only when duration > 0 (synthetic state alone is not enough)", "result": "INFO", "evidence": "Synthetic setDeck({ duration: 180 }) injection alone does NOT render markers; HotCueMarkers reads duration from audioElRef/wsRef.getDuration() not store.duration. Real track required for markers to render."}
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "(Optional) Markers visible only within wavesurfer's scrolling wrapper viewport — when a cue's leftPct%*wrapperWidth exceeds the visible deck container, the marker is rendered off-screen at large absolute X. Functionally correct (it scrolls with audio) but worth documenting.",
+    "(Optional, low priority) HotCueMarkers reads duration via wsRef.getDuration()/audioElRef — not from store. Synthetic store-only injection cannot drive the markers. Consider also accepting store-provided duration as a fallback for previewing/testing.",
+    "(Optional) Consider adding a small visual cursor hint when Shift/Alt is held over a marker (currently cursor flips to 'grabbing' only after pointerdown) to telegraph the move-gesture affordance to users."
+  ],
+  "critical_code_review_comments": [
+    "HotCueMarkers.jsx: clean separation of left-click seek vs Shift/Alt-drag-move vs ×/right-click delete; e.stopPropagation() correctly prevents waveform scrub; pointer capture used for cross-element drag — solid.",
+    "Deck.jsx scrub handler skips when composedPath includes a testid containing '-marker-' — defensive and correct.",
+    "djStore.js previously did NOT expose useDJStore on window despite the agent context note claiming so; I added the (test-only effect) `window.useDJStore = useDJStore` block at the bottom for E2E inspectability. Safe to keep — zustand store is already client-bundled."
+  ],
+  "updated_files": [
+    "/app/frontend/src/store/djStore.js (added window.useDJStore exposure for E2E testing — 4 lines at end of file)"
+  ],
+  "success_rate": { "backend": "n/a (skipped per request)", "frontend": "100% (6/6 marker interactions)" },
+  "test_credentials": "n/a",
+  "seed_data_creation": "Loaded real S3 track 'Brown Sugar' via library load-a button; set hot cues at 1s/2s/etc via window.useDJStore.getState().setHotCue('deckA', slot, sec).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "window.useDJStore.getState() is now exposed on window for E2E. To test marker interactions, you MUST load a real track first (synthetic track injection alone won't render markers because HotCueMarkers reads duration from wavesurfer/audioElRef, not the store). Use [data-testid=library-toggle] then [data-testid^=load-a-] to load the first track, wait for deckA.duration > 0 (~2s), then set cues at small times (1-3s) so markers appear within the visible viewport during drag interactions. Drag tests on cues at later times may target the wavesurfer wrapper's off-viewport coordinates.",
+  "rca of the issue": "P0 was: hot-cue markers visible but had no working delete/move interactions. Fix in /app/frontend/src/components/dj/HotCueMarkers.jsx (rewrite, ~270 lines) added: hover-revealed × button (click→clearHotCue), right-click contextmenu (preventDefault + clearHotCue), Shift/Alt+pointerdown→pointermove→pointerup (commits via setHotCue), and plain click→seekTo. e.stopPropagation() at marker level + composedPath '-marker-' guard in Deck.jsx scrub handler keeps waveform scrub from competing. Verified: all 6 interactions work end-to-end on the live URL with a real S3-loaded track. No regressions observed."
+}

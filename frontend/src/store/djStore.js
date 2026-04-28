@@ -195,3 +195,8 @@ export const useDJStore = create(
     }
   )
 );
+
+// Expose store for E2E testing/debugging in browser console.
+if (typeof window !== "undefined") {
+  window.useDJStore = useDJStore;
+}
