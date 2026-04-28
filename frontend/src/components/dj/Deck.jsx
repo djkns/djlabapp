@@ -885,6 +885,31 @@ export default function Deck({ id, label, accent }) {
   // start of the bar). For the vast majority of cleanly-cut releases this is
   // accurate; for tracks with long intros / pickup notes the user can nudge
   // with the tempo fader after engaging sync.
+  // Half/double-tempo aware sync: tries 3 candidate targets — exact, half,
+  // double — and picks whichever lands closest to my baseBPM. Solves the
+  // classic BPM-detector confusion where a 82 BPM hip-hop track gets read as
+  // 164 BPM and naive sync would yank the follower into a +50% pitch.
+  const computeSyncTarget = (myBaseBPM, otherCurrentBPM, tempoRange) => {
+    const candidates = [
+      { ratio: 1,   label: "" },
+      { ratio: 0.5, label: " ÷2" },
+      { ratio: 2,   label: " ×2" },
+    ];
+    let best = null;
+    for (const c of candidates) {
+      const target = otherCurrentBPM * c.ratio;
+      const pct = (target / myBaseBPM - 1) * 100;
+      // Prefer candidates whose pct fits within tempoRange. Among those, the
+      // smallest absolute pct wins (closest to the follower's natural pitch).
+      const fits = Math.abs(pct) <= tempoRange + 0.001;
+      const score = fits ? Math.abs(pct) : 1000 + Math.abs(pct);
+      if (best == null || score < best.score) {
+        best = { ...c, target, pct, fits, score };
+      }
+    }
+    return best;
+  };
+
   const sync = () => {
     const otherId = id === "deckA" ? "deckB" : "deckA";
     const s = useDJStore.getState();
@@ -903,11 +928,15 @@ export default function Deck({ id, label, accent }) {
       return;
     }
 
-    // 1) BPM match (within tempo range)
+    // 1) BPM match — half/double aware, clamped to tempo range
     const otherBPM = other.baseBPM * (1 + (other.tempoPct || 0) / 100);
-    const desiredPct = (otherBPM / me.baseBPM - 1) * 100;
-    const clamped = Math.max(-me.tempoRange, Math.min(me.tempoRange, desiredPct));
+    const best = computeSyncTarget(me.baseBPM, otherBPM, me.tempoRange);
+    const clamped = Math.max(-me.tempoRange, Math.min(me.tempoRange, best.pct));
     setDeck(id, { tempoPct: clamped });
+
+    // Phase period uses the chosen ratio so beats line up at the matched
+    // tempo (half-time sync = beats every two master beats).
+    const followerEffectiveBPM = me.baseBPM * (1 + clamped / 100);
 
     // 2) Phase align — snap follower's currentTime to the nearest beat
     //    grid match of the master deck. Reads live currentTime from each
@@ -915,8 +944,7 @@ export default function Deck({ id, label, accent }) {
     const myEl = audioElRef.current;
     const otherEl = getDeckAudioEl(otherId);
     if (myEl && otherEl && myEl.duration && otherEl.duration) {
-      const masterBPM = otherBPM;                      // beats per minute
-      const beatPeriod = 60 / masterBPM;               // seconds per beat
+      const beatPeriod = 60 / followerEffectiveBPM;     // seconds per follower beat
       const masterT = otherEl.currentTime || 0;
       const myT = myEl.currentTime || 0;
       const masterPhase = ((masterT % beatPeriod) + beatPeriod) % beatPeriod;
@@ -933,8 +961,8 @@ export default function Deck({ id, label, accent }) {
     // 3) Engage: this deck now follows the other's tempo until released
     setSyncedTo(id, otherId);
     toast.success(`Synced to Deck ${otherId === "deckA" ? "A" : "B"}`, {
-      description: `${otherBPM.toFixed(1)} BPM · phase aligned`,
-      duration: 2000,
+      description: `${followerEffectiveBPM.toFixed(1)} BPM${best.label} · phase aligned`,
+      duration: 2200,
     });
   };
 
@@ -949,8 +977,8 @@ export default function Deck({ id, label, accent }) {
       const other = s[otherId];
       if (me.syncedTo !== otherId || !me.baseBPM || !other?.baseBPM) return;
       const otherBPM = other.baseBPM * (1 + (other.tempoPct || 0) / 100);
-      const desiredPct = (otherBPM / me.baseBPM - 1) * 100;
-      const clamped = Math.max(-me.tempoRange, Math.min(me.tempoRange, desiredPct));
+      const best = computeSyncTarget(me.baseBPM, otherBPM, me.tempoRange);
+      const clamped = Math.max(-me.tempoRange, Math.min(me.tempoRange, best.pct));
       if (Math.abs(clamped - (me.tempoPct || 0)) > 0.005) {
         setDeck(id, { tempoPct: clamped });
       }
@@ -1170,6 +1198,22 @@ export default function Deck({ id, label, accent }) {
                 className="bpm-input w-12 bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
                 data-testid={`deck-${letter}-base-bpm`} title="Base BPM"
               />
+              <button
+                type="button"
+                data-testid={`deck-${letter}-bpm-halve`}
+                onClick={() => setDeck(id, { baseBPM: Math.max(40, Math.min(220, deck.baseBPM / 2)) })}
+                disabled={!deck.track || deck.baseBPM / 2 < 40}
+                className="px-1 py-0.5 rounded border border-white/15 text-[8px] font-bold tracking-wider text-[#A1A1AA] hover:text-white hover:border-white/40 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Half-time (÷2) — fix BPM if detector picked the doubled tempo"
+              >÷2</button>
+              <button
+                type="button"
+                data-testid={`deck-${letter}-bpm-double`}
+                onClick={() => setDeck(id, { baseBPM: Math.max(40, Math.min(220, deck.baseBPM * 2)) })}
+                disabled={!deck.track || deck.baseBPM * 2 > 220}
+                className="px-1 py-0.5 rounded border border-white/15 text-[8px] font-bold tracking-wider text-[#A1A1AA] hover:text-white hover:border-white/40 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Double-time (×2) — fix BPM if detector picked the half tempo"
+              >×2</button>
             </div>
           </div>
         </div>
