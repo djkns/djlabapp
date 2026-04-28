@@ -78,8 +78,8 @@ export const useDJStore = create(
       // Headphones
       hp: {
         enabled: false,
-        mix: 0.5,      // 0 = master, 1 = cue
-        masterEnabled: true, // T7-style MASTER button: toggle master into HP path
+        mix: 0.0,      // asymmetric knob: 0..0.5 = master only, 0.5..1 = master→cue fade
+        masterEnabled: true, // legacy — kept for persisted-state compat; no longer used
         splitCue: false, // SPLIT: L=cue / R=master per-ear monitoring
         volume: 0.8,
         sinkId: "default",

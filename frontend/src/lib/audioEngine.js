@@ -430,30 +430,43 @@ export function hasScratchBuffer(deckId) { return !!scratchState[deckId]?.buffer
 
 
 // Headphone helpers
-let hpMasterEnabled = true;     // T7-style MASTER-to-HP toggle
-let hpMixCue = 0.5;             // 0 = master only, 1 = cue only
+let hpMixCue = 0.0;             // 0..1; 0..0.5 = master only, 0.5..1 = master→cue fade
 let hpSplitCue = false;         // L=cue / R=master split-cue mode
 
 function applyHpGains() {
   const { ctx, hpCueGain, hpMasterGain } = getAudioContext();
-  const cue = hpMixCue;
-  const master = hpMasterEnabled ? (1 - hpMixCue) : 0;
+  // Asymmetric mapping per user spec: the bottom half of the knob's travel
+  // (0..0.5) is "master only — no cue bleed", and the top half (0.5..1)
+  // fades cue in while fading master out. So:
+  //   knob at 0   → master=1, cue=0   (clean live mix in headphones)
+  //   knob at 0.5 → master=1, cue=0   (still clean master at center)
+  //   knob at 0.75→ master=0.5, cue=0.5
+  //   knob at 1   → master=0, cue=1   (PFL'd deck only)
+  // This matches the user's mental model that "center = the deck that is
+  // playing" and "full cue = the cued deck only".
+  let cue, master;
+  if (hpMixCue <= 0.5) {
+    cue = 0;
+    master = 1;
+  } else {
+    const t = (hpMixCue - 0.5) * 2; // 0..1 across the upper half
+    cue = t;
+    master = 1 - t;
+  }
   hpCueGain.gain.setTargetAtTime(cue, ctx.currentTime, 0.02);
   hpMasterGain.gain.setTargetAtTime(master, ctx.currentTime, 0.02);
 }
 
 export function setHeadphoneMix(value01) {
-  // 0 = full master, 1 = full cue
+  // 0 = full master, 1 = full cue (asymmetric mapping — see applyHpGains)
   hpMixCue = Math.max(0, Math.min(1, value01));
   applyHpGains();
 }
 
-export function setHeadphoneMasterEnabled(enabled) {
-  hpMasterEnabled = !!enabled;
-  applyHpGains();
-}
-
-export function isHeadphoneMasterEnabled() { return hpMasterEnabled; }
+// Legacy MASTER toggle removed — the new asymmetric knob makes it redundant.
+// Keep a no-op stub so any old call sites don't break.
+export function setHeadphoneMasterEnabled(_enabled) { /* deprecated */ }
+export function isHeadphoneMasterEnabled() { return true; }
 
 /**
  * Hard split-cue: in SPLIT mode the headphone output becomes
