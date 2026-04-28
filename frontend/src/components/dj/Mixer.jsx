@@ -545,9 +545,14 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             testid="hp-mix"
             color="#00D4FF"
           />
-          <span className="text-[7px] font-mono-dj tracking-[0.15em] text-[#52525B] -mt-1" title="T7 spec: knob LEFT = CUE only · knob RIGHT = MASTER only">
-            CUE ← → MSTR
-          </span>
+          <div
+            className="flex items-center justify-between w-full px-1 -mt-1 text-[8px] font-mono-dj tracking-[0.1em] text-[#71717A] whitespace-nowrap"
+            title="T7 spec: knob LEFT = CUE only · knob RIGHT = MASTER only"
+          >
+            <span>CUE</span>
+            <span className="text-[#3F3F46]">←→</span>
+            <span>MSTR</span>
+          </div>
           <EQKnob
             label="HP VOL" value={hp.volume} min={0} max={1.2}
             onChange={(v) => setHp({ volume: Math.max(0, Math.min(1.2, v)) })}
