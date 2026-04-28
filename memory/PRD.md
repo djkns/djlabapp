@@ -23,6 +23,15 @@ Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia eco
 - **Backend**: FastAPI + MongoDB
 - **Storage**: AWS S3 for track library
 
+## Recent (Feb 2026)
+- **P0 FIX — Hot-cue markers are fully interactive** on the waveform:
+  - **Delete**: hover reveals an `×` badge (click to delete) **or** right-click the stem.
+  - **Move**: Shift- or Alt-drag the stem horizontally to reposition; commit on release (persists to `/api/tracks/meta` via existing debounce).
+  - **Seek**: plain click still jumps the playhead to the cue (unchanged).
+  - Waveform scrub handler skips when pointerdown lands on anything with a `-marker-` testid in its `composedPath`, so dragging markers never competes with scrub.
+  - `window.useDJStore` exposed for E2E test inspection.
+  - Verified end-to-end: 6/6 interactions pass via the frontend testing agent (iteration_2.json).
+
 ## Implemented (as of Apr 2026)
 - Two decks, picture-disc spinning vinyl
 - Wavesurfer waveforms with cue point markers
