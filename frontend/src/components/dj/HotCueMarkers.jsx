@@ -93,13 +93,13 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
         const color = SLOT_COLORS[i] || "#FF1F1F";
         const leftPct = (sec / duration) * 100;
 
-        // Stem — the vertical line
+        // Stem container — invisible 12px-wide hit zone centered on the cue
+        // position. Easy to grab; still pointer-events:auto so drag works.
         const stem = document.createElement("div");
         stem.style.cssText = `
           position:absolute;top:0;bottom:0;left:${leftPct}%;
-          width:2px;margin-left:-1px;
-          background:${color};
-          box-shadow:0 0 6px ${color}cc, 0 0 2px ${color};
+          width:12px;margin-left:-6px;
+          background:transparent;
           pointer-events:auto;cursor:grab;
           z-index:1;
           touch-action:none;
@@ -108,10 +108,21 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
         stem.dataset.testid = `deck-${letter}-marker-${i + 1}`;
         stem.dataset.cueSlot = String(i);
 
+        // Visible line — 2px wide, centered inside the 12px hit zone
+        const line = document.createElement("div");
+        line.style.cssText = `
+          position:absolute;top:0;bottom:0;left:50%;
+          width:2px;margin-left:-1px;
+          background:${color};
+          box-shadow:0 0 6px ${color}cc, 0 0 2px ${color};
+          pointer-events:none;
+        `;
+        stem.appendChild(line);
+
         // Flag (number badge)
         const flag = document.createElement("div");
         flag.style.cssText = `
-          position:absolute;top:0;left:1px;
+          position:absolute;top:0;left:50%;margin-left:-1px;
           padding:1px 4px;
           font:700 9px ui-monospace, "JetBrains Mono", monospace;
           background:${color};color:#000;
