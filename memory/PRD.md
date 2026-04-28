@@ -84,6 +84,8 @@ Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia eco
 ### Known Limitations
 - **Scratch audio fidelity**: Implemented a hybrid AudioBufferSourceNode scratch engine alongside the HTML5 `<audio>` playback path (Apr 2026 session) — pre-decodes each loaded track into forward + sample-reversed buffers, fires short slices on jog ticks while the platter is touched. The implementation works mechanically but the resulting audio doesn't reach professional DJ-platform fidelity (Rekordbox / Serato / Virtual DJ). Code retained for reference and future iteration. Pitch-bend mode (subtle BPM nudge when the wheel turns without a touch) works correctly. Higher fidelity will require either a WASM-based scratch DSP, a proper rate-controlled streaming buffer node, or a desktop-native rewrite.
 
+- **Hercules T7 physical motor control** (Apr 2026): The T7 has motorized 7" platters. Making them physically spin from DJ Lab requires sending the T7's proprietary motor-control MIDI command. Hercules has not publicly documented this command, and no open-source community mapping has published it either. VirtualDJ and DJUCED ship the command internally as a compiled-in abstraction (`ns7_platter` in VDJ's editor is a high-level function, not raw MIDI). On-screen vinyl rotation works correctly at 33⅓ RPM; jog wheel IN still receives perfectly. Path to unblock: MIDI Monitor capture while DJUCED/VDJ plays a track → extract the wire-level bytes. Alternative: dev-relations request to Hercules for the MIDI implementation chart.
+
 ### Refactoring
 - Break down `Deck.jsx` (>1200 lines) — extract jog engine + load pipeline into hooks
 
