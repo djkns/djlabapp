@@ -12,8 +12,8 @@ const SLOT_COLORS = [
  *
  * Interactions (all stopPropagation to keep waveform scrub from competing):
  *   • Plain click on stem          → seek to cue
- *   • Click the × badge            → delete cue
- *   • Right-click (contextmenu)    → delete cue
+ *   • Double-click on stem         → delete cue
+ *   • Right-click (contextmenu)    → delete cue (power-user fallback)
  *   • Shift- or Alt-drag the stem  → reposition cue (commits on pointerup)
  *
  * Uses imperative DOM because the wrapper is owned by wavesurfer; React would
@@ -102,16 +102,15 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           z-index:1;
           touch-action:none;
         `;
-        stem.title = `Cue ${i + 1} — ${sec.toFixed(2)}s\nClick: jump · Shift/Alt+drag: move · Right-click / ×: delete`;
+        stem.title = `Cue ${i + 1} — ${sec.toFixed(2)}s\nClick: jump · Double-click: delete · Shift/Alt+drag: move`;
         stem.dataset.testid = `deck-${deckId}-marker-${i + 1}`;
         stem.dataset.cueSlot = String(i);
 
-        // Flag (number badge) — not interactive on its own; host for ×
+        // Flag (number badge)
         const flag = document.createElement("div");
         flag.style.cssText = `
           position:absolute;top:0;left:1px;
-          display:flex;align-items:center;gap:3px;
-          padding:1px 3px 1px 4px;
+          padding:1px 4px;
           font:700 9px ui-monospace, "JetBrains Mono", monospace;
           background:${color};color:#000;
           border-radius:0 2px 2px 0;
@@ -120,44 +119,17 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           pointer-events:none;
           white-space:nowrap;
         `;
-        const numSpan = document.createElement("span");
-        numSpan.textContent = String(i + 1);
-        flag.appendChild(numSpan);
-
-        // × delete badge — hidden until hover
-        const x = document.createElement("button");
-        x.type = "button";
-        x.textContent = "×";
-        x.setAttribute("aria-label", `Delete cue ${i + 1}`);
-        x.dataset.testid = `deck-${deckId}-marker-${i + 1}-delete`;
-        x.style.cssText = `
-          all:unset;
-          display:none;
-          cursor:pointer;
-          padding:0 3px;
-          font:700 11px ui-monospace, monospace;
-          line-height:1;
-          color:#000;
-          background:rgba(0,0,0,0.25);
-          border-radius:2px;
-          pointer-events:auto;
-        `;
-        flag.appendChild(x);
+        flag.textContent = String(i + 1);
         stem.appendChild(flag);
 
-        // Reveal × on hover
-        stem.addEventListener("mouseenter", () => { x.style.display = "inline-block"; });
-        stem.addEventListener("mouseleave", () => { x.style.display = "none"; });
-
-        // Delete via × button
-        x.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); });
-        x.addEventListener("click", (e) => {
+        // Delete via double-click anywhere on the stem
+        stem.addEventListener("dblclick", (e) => {
           e.stopPropagation();
           e.preventDefault();
           clearHotCue(deckId, i);
         });
 
-        // Delete via right-click (contextmenu)
+        // Delete via right-click (contextmenu) — power-user fallback
         stem.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -167,9 +139,8 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
         // Click / drag on stem
         let dragState = null;
         const onPointerDown = (e) => {
-          // Ignore right-click (handled by contextmenu) and clicks on the × badge
+          // Ignore right-click (handled by contextmenu)
           if (e.button === 2) return;
-          if (e.target === x) return;
 
           // Always prevent the parent waveform from starting a scrub. The
           // scrub handler also checks `-marker-` via composedPath, but

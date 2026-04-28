@@ -24,8 +24,11 @@ Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia eco
 - **Storage**: AWS S3 for track library
 
 ## Recent (Feb 2026)
+- **Hot-cue marker delete UX simplified** (Feb 2026):
+  - **Double-click** the marker → delete (primary, most natural gesture).
+  - **Right-click** the marker → delete (quiet power-user fallback).
+  - Removed the on-hover `×` badge — too fiddly on a 2px stem; user feedback "kinda hard to get use to right clicking x to delete".
 - **P0 FIX — Hot-cue markers are fully interactive** on the waveform:
-  - **Delete**: hover reveals an `×` badge (click to delete) **or** right-click the stem.
   - **Move**: Shift- or Alt-drag the stem horizontally to reposition; commit on release (persists to `/api/tracks/meta` via existing debounce).
   - **Seek**: plain click still jumps the playhead to the cue (unchanged).
   - Waveform scrub handler skips when pointerdown lands on anything with a `-marker-` testid in its `composedPath`, so dragging markers never competes with scrub.
