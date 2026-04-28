@@ -549,41 +549,48 @@ export default function Deck({ id, label, accent }) {
               }
               if (cached?.bpm && cached?.musical_key && !needsTagRead) {
                 // BPM + key + tags all cached → skip BPM detect entirely.
-                // Still: (1) verify wavesurfer rendered + force peaks
-                // fallback if blank, and (2) hand the decoded buffer to
-                // the scratch engine so the platter can play real audio.
+                // RACE FIX: wavesurfer's "ready" event fires after audio
+                // decoding but BEFORE canvas paint ("redraw"). The previous
+                // shape of this branch returned as soon as `getDuration()`
+                // was non-zero, leaving the canvas blank. Now we ALWAYS
+                // feed peaks via `ws.load(url, peaks, duration)` from a
+                // decoded buffer — that call paints synchronously. We
+                // reuse wavesurfer's own decoded buffer when present
+                // (zero extra fetch) and fall back to a fresh fetch+decode
+                // if not.
                 (async () => {
                   try {
                     await wsLoaded;
                     if (useDJStore.getState()[id].track?.key !== trackKey) return;
-                    // Try to reuse wavesurfer's buffer first (zero cost)
-                    let cachedBuf = null;
-                    try { cachedBuf = wsRef.current?.getDecodedData?.(); } catch { /* ignore */ }
-                    const wsDur = wsRef.current?.getDuration?.() || 0;
-                    if (cachedBuf && wsDur >= 0.5) {
-                      try { setScratchBuffer(id, cachedBuf); } catch (err) { console.warn(`[scratch ${id}] cached buffer register failed`, err); }
-                      return; // waveform looks fine — done
+
+                    // Try to reuse wavesurfer's buffer first (no extra fetch)
+                    let buf = null;
+                    try { buf = wsRef.current?.getDecodedData?.(); } catch { /* ignore */ }
+                    if (!buf) {
+                      const resp = await fetch(playUrl);
+                      if (!resp.ok) return;
+                      const arr = await resp.arrayBuffer();
+                      const ac = getAudioContext().ctx;
+                      buf = await ac.decodeAudioData(arr.slice(0));
                     }
-                    console.warn(`[ws ${id}] cached-path: no duration, forcing peaks render`);
-                    const resp = await fetch(playUrl);
-                    if (!resp.ok) return;
-                    const arr = await resp.arrayBuffer();
-                    const ac = getAudioContext().ctx;
-                    const buf2 = await ac.decodeAudioData(arr.slice(0));
                     if (useDJStore.getState()[id].track?.key !== trackKey) return;
-                    try { setScratchBuffer(id, buf2); } catch (err) { console.warn(`[scratch ${id}] cached fallback register failed`, err); }
+
+                    // Hand to scratch engine (one-time per track)
+                    try { setScratchBuffer(id, buf); } catch (err) { console.warn(`[scratch ${id}] cached buffer register failed`, err); }
+
+                    // Force peaks render — guarantees canvas paint
                     const peaks = [];
-                    for (let i = 0; i < buf2.numberOfChannels; i++) peaks.push(buf2.getChannelData(i));
-                    const el = audioElRef.current;
-                    const t = el?.currentTime || 0;
-                    const wasPlaying = el ? !el.paused : false;
-                    await wsRef.current.load(playUrl, peaks, buf2.duration).catch(() => {});
-                    if (el) {
-                      try { el.currentTime = t; } catch { /* noop */ }
-                      if (wasPlaying) el.play().catch(() => {});
+                    for (let i = 0; i < buf.numberOfChannels; i++) peaks.push(buf.getChannelData(i));
+                    const elx = audioElRef.current;
+                    const tx = elx?.currentTime || 0;
+                    const wasPlaying = elx ? !elx.paused : false;
+                    await wsRef.current?.load(playUrl, peaks, buf.duration).catch(() => {});
+                    if (elx) {
+                      try { elx.currentTime = tx; } catch { /* noop */ }
+                      if (wasPlaying) elx.play().catch(() => {});
                     }
                   } catch (err) {
-                    console.warn(`[ws ${id}] cached-path peaks-fallback threw`, err);
+                    console.warn(`[ws ${id}] cached-path peaks render threw`, err);
                   }
                 })();
                 return;
@@ -647,31 +654,26 @@ export default function Deck({ id, label, accent }) {
           // Cheap one-time op per track — reverse buffer is built once on
           // setScratchBuffer.
           try { setScratchBuffer(id, buf); } catch (err) { console.warn(`[scratch ${id}] buffer register failed`, err); }
-          // GUARANTEED WAVEFORM FALLBACK: if wavesurfer's own load/decode
-          // didn't actually render audio, feed it the peaks we just
-          // decoded. Use `getDuration()` as the canonical signal (NOT
-          // `getDecodedData()` — that returns truthy in cases where the
-          // canvas is still blank). Duration is binary: wavesurfer either
-          // thinks it has a loaded media or it doesn't.
-          //
-          // ws.load(url, peaks, duration) skips wavesurfer's internal
-          // fetch entirely and renders directly from data we already have.
+          // GUARANTEED WAVEFORM PAINT: feed peaks directly via ws.load.
+          // RACE FIX: wavesurfer's "ready" event fires after audio decode
+          // but BEFORE canvas paint ("redraw"), so checking getDuration()
+          // here is unreliable — the canvas could still be blank. Always
+          // force a peaks render. ws.load(url, peaks, duration) bypasses
+          // wavesurfer's internal fetch/decode and paints synchronously.
           try {
-            const wsDur = wsRef.current?.getDuration?.() || 0;
             const cur = useDJStore.getState()[id].track;
-            if (wsDur < 0.5 && wsRef.current && cur?.key === trackKey) {
-              console.warn(`[ws ${id}] no duration after load (${wsDur}s) — forcing peaks render`);
+            if (wsRef.current && cur?.key === trackKey) {
               const peaks = [];
               for (let i = 0; i < buf.numberOfChannels; i++) {
                 peaks.push(buf.getChannelData(i));
               }
               // Preserve current playhead (and play state) across the
-              // forced re-load so we don't yank a playing track back to 0.
+              // re-load so we don't yank a playing track back to 0.
               const el = audioElRef.current;
               const t = el?.currentTime || 0;
               const wasPlaying = el ? !el.paused : false;
               await wsRef.current.load(playUrl, peaks, buf.duration).catch((err) => {
-                console.warn(`[ws ${id}] peaks-fallback load failed`, err);
+                console.warn(`[ws ${id}] peaks-render load failed`, err);
               });
               if (el) {
                 try { el.currentTime = t; } catch { /* noop */ }
@@ -681,7 +683,7 @@ export default function Deck({ id, label, accent }) {
               }
             }
           } catch (err) {
-            console.warn(`[ws ${id}] peaks-fallback threw`, err);
+            console.warn(`[ws ${id}] peaks-render threw`, err);
           }
           // Try the two algorithms web-audio-beat-detector ships:
           //   • analyze(buf) — returns a single tempo (occasionally falls
