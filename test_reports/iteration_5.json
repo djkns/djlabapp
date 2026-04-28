@@ -1,0 +1,54 @@
+{
+  "summary": "Refactor regression — Deck.jsx loadTrack now calls a shared module-scope `paintWaveformFromBuffer({ ws, audioEl, buf, url, label })` helper from BOTH the cached-path branch (~L618) and the non-cached-path branch (~L694) instead of inlining the same 15-line peaks-render block twice. Re-ran the 4 most critical scenarios from iteration_4 against https://djlab-neon.preview.emergentagent.com — all PASS, zero pageerrors. Behavior is identical to iteration_4 (9/9 PASS). The helper is correctly invoked with the same args from both call sites; track-key guard remains around each call site (lines 612 & 692-693) so the rapid-load race is still caught before paint. Refactor is safe to ship.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {
+      "name": "S1 — Cached-path bug repro: pre-warm Mary Go Round on Deck A → wait 8s for Mongo cache → full page reload → load Deck B FIRST without touching Deck A",
+      "result": "PASS",
+      "evidence": "Deck B canvas nonZeroAlpha = 88,172 px (threshold 500). Screenshot s1_repro.png shows the orange-red waveform peaks rendering across Deck B's full timeline (BPM 142.0 cached, 8/8 hot cues restored from cache). Deck A canvas = 0 (correctly untouched). The cached-path helper invocation at Deck.jsx:618 is wired identically to the inlined version from iteration_4."
+    },
+    {
+      "name": "S2 — Cache-miss path on a fresh, never-loaded track ('101 - take a message', BPM=null in /api/tracks)",
+      "result": "PASS",
+      "evidence": "Deck A canvas nonZeroAlpha = 83,408 px after waiting 12s for fetch+decode+BPM analysis. Confirms the non-cached-path helper invocation at Deck.jsx:694 paints the canvas via the shared helper exactly like the original inlined block did."
+    },
+    {
+      "name": "S3 — Sequential: load Deck A (Brown Sugar 166) → wait 5s → load Deck B (Pillow 90) — both BPM-cached",
+      "result": "PASS",
+      "evidence": "Deck A nonZero = 58,468; Deck B nonZero = 76,880. Both decks paint as expected. Matches iteration_4 PRIMARY-1 ratios."
+    },
+    {
+      "name": "S4 — Rapid-fire 5 different tracks on Deck B at 250ms intervals (Brown Sugar → Pillow → A Long Walk → Untitled HDIF → Mary Go Round)",
+      "result": "PASS",
+      "evidence": "After the burst + 8s settle: Deck B store reports final track 'Mary Go Round' (the last-fired load), canvas nonZero = 88,172. The track-key guard inside the helper's caller (lines 612 & 692-693) correctly drops the 4 stale in-flight paints. No blank canvas, no torn render."
+    },
+    {
+      "name": "Console + pageerror monitoring across all four scenarios (~12 track loads, 1 full reload)",
+      "result": "PASS",
+      "evidence": "0 pageerror events. 0 console.error events from app code."
+    }
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "paintWaveformFromBuffer (Deck.jsx L43-62) correctly: (1) builds peaks from buf.numberOfChannels via getChannelData; (2) snapshots audioEl.currentTime + paused state BEFORE ws.load; (3) catches the load promise rejection (logs warn instead of unhandled); (4) restores currentTime + resumes play after load. Identical semantics to the two prior inlined blocks — verified by both side-by-side reading the diff and by behavior parity with iteration_4 numbers (~88k px on the same Mary Go Round track).",
+    "Both call sites pass `label: \"<deckId> cached\"` vs \"<deckId> fresh\" so the warn logs remain debuggable. Good.",
+    "Track-key guard `useDJStore.getState()[id].track?.key !== trackKey` is still checked at L612 (immediately before cached helper call) and L693 (immediately before fresh helper call). The helper itself does NOT re-check the guard, which is correct — the guard depends on `trackKey` from the closure and the helper is generic.",
+    "Helper signature uses an object param instead of positionals — keeps call sites self-documenting and prevents arg-order bugs on future edits. Nice.",
+    "[NIT] The helper uses `await ws.load(...).catch(...)` which means if the promise rejects, control still proceeds to the currentTime/play restore. That's the same behavior as the original code — keeping it preserves parity, but a future iteration could `return` on rejection to avoid restoring state on a failed load.",
+    "No new files >700 lines, no new env-var hardcoding, no MongoDB ObjectId leakage, no missing data-testid on interactive elements introduced."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only per request)", "frontend": "100% (4/4 refactor-regression scenarios PASS, 0 pageerrors)" },
+  "test_credentials": "n/a",
+  "seed_data_creation": "Used existing S3 library (1725 tracks). Cache-warm step for S1: loaded Mary Go Round on Deck A for 8s before reload to ensure /api/tracks/meta returns cached bpm + musical_key + tags so the cached-path branch (L586 condition) is taken on the post-reload Deck B load.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Library API is /api/tracks (NOT /api/library). Returns flat array of {key, name, artist, bpm, ...}. Tracks with cached BPM in iteration_4: brown_sugar(166), a_long_walk(152), pillow(90), untitled_hdif(150), mary_go_round(142). Tracks with bpm:null in /api/tracks response are uncached — pick from there for cache-miss tests (BPM analysis adds ~5-8s wait). Canvas-pixel technique still works: walk all CANVAS children of [data-testid=deck-{a|b}-waveform] (recursive incl shadowRoot), sum non-zero alpha pixels, threshold > 500 (real renders give 50k–160k). Bug repro requires a FULL page reload between pre-warm and Deck-B-first load to drop the in-memory wavesurfer state.",
+  "rca of the issue": "Not applicable — this iteration is a refactor verification, not a bug investigation. The underlying RCA (wavesurfer 7 'ready' fires before 'redraw'; cached path returned early after duration!=0 leaving canvas blank; fix: always feed peaks via ws.load(url, peaks, duration) from a decoded AudioBuffer) is now centralized in paintWaveformFromBuffer. Behavior parity with iteration_4 is empirically confirmed (88,172 px on same track via same repro flow)."
+}
