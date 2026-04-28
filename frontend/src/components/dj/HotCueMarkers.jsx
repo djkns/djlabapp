@@ -12,9 +12,9 @@ const SLOT_COLORS = [
  *
  * Interactions (all stopPropagation to keep waveform scrub from competing):
  *   • Plain click on stem          → seek to cue
+ *   • Plain drag on stem           → reposition cue (commits on pointerup)
  *   • Double-click on stem         → delete cue
  *   • Right-click (contextmenu)    → delete cue (power-user fallback)
- *   • Shift- or Alt-drag the stem  → reposition cue (commits on pointerup)
  *
  * Uses imperative DOM because the wrapper is owned by wavesurfer; React would
  * fight its internal layout. Re-renders markers only on hotCue change or
@@ -104,7 +104,7 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           z-index:1;
           touch-action:none;
         `;
-        stem.title = `Cue ${i + 1} — ${sec.toFixed(2)}s\nClick: jump · Double-click: delete · Shift/Alt+drag: move`;
+        stem.title = `Cue ${i + 1} — ${sec.toFixed(2)}s\nClick: jump · Drag: move · Double-click: delete`;
         stem.dataset.testid = `deck-${letter}-marker-${i + 1}`;
         stem.dataset.cueSlot = String(i);
 
@@ -139,68 +139,65 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
         });
 
         // Click / drag on stem
+        //   • Plain click (no movement) → seek to cue
+        //   • Plain drag (any movement)  → reposition cue (commit on release)
+        //   • Double-click               → delete (handled separately above)
+        //   • Right-click                → delete (handled separately above)
         let dragState = null;
+        const DRAG_THRESHOLD_PX = 4; // tolerate small jitter so a click doesn't move
         const onPointerDown = (e) => {
-          // Ignore right-click (handled by contextmenu)
-          if (e.button === 2) return;
-
-          // Always prevent the parent waveform from starting a scrub. The
-          // scrub handler also checks `-marker-` via composedPath, but
-          // stopping here guarantees it across browsers.
+          if (e.button === 2) return; // right-click → contextmenu deletes
+          // Stop the parent waveform from starting a scrub
           e.stopPropagation();
 
-          const isMoveGesture = e.shiftKey || e.altKey;
           const layerEl = layerRef.current;
           const rect = layerEl?.getBoundingClientRect();
           dragState = {
             startX: e.clientX,
             startSec: sec,
             moved: false,
-            moveMode: isMoveGesture,
             rect,
             lastSec: sec,
           };
           stem.setPointerCapture?.(e.pointerId);
-          if (isMoveGesture) stem.style.cursor = "grabbing";
         };
 
         const onPointerMove = (e) => {
           if (!dragState) return;
           const dx = e.clientX - dragState.startX;
-          if (Math.abs(dx) > 3) dragState.moved = true;
-          if (!dragState.moveMode || !dragState.rect) return;
-          // Compute new position based on absolute pointer X relative to layer
+          if (!dragState.moved && Math.abs(dx) <= DRAG_THRESHOLD_PX) return;
+          if (!dragState.moved) {
+            // Cross threshold → enter drag mode
+            dragState.moved = true;
+            stem.style.cursor = "grabbing";
+          }
+          if (!dragState.rect) return;
           const dur = getDuration();
           if (!dur) return;
           const xRel = e.clientX - dragState.rect.left;
           const pct = Math.max(0, Math.min(1, xRel / dragState.rect.width));
           const newSec = Math.max(0, Math.min(dur - 0.05, pct * dur));
           dragState.lastSec = newSec;
-          // Visual preview without committing every frame (cheap: just move the stem)
+          // Visual preview without committing every frame
           stem.style.left = `${pct * 100}%`;
         };
 
         const onPointerUp = (e) => {
           if (!dragState) return;
           const wasDrag = dragState.moved;
-          const wasMove = dragState.moveMode;
           const finalSec = dragState.lastSec;
+          const startSec = dragState.startSec;
           stem.releasePointerCapture?.(e.pointerId);
           stem.style.cursor = "grab";
-          const state = dragState;
           dragState = null;
 
-          if (wasMove && wasDrag) {
+          if (wasDrag) {
             // Commit the new position — triggers persistence useEffect in Deck.jsx
             setHotCue(deckId, i, finalSec);
-          } else if (!wasDrag) {
-            // Plain click (no drag, no modifier) → seek to cue
-            if (!wasMove) {
-              seekTo?.(state.startSec);
-            }
+          } else {
+            // No drag → treat as a click → seek to cue
+            seekTo?.(startSec);
           }
-          // If wasMove && !wasDrag: shift+click without drag → no-op (user
-          // probably intended to start a drag; don't seek by accident).
         };
 
         stem.addEventListener("pointerdown", onPointerDown);
