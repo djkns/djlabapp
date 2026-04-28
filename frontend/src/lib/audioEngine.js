@@ -429,44 +429,41 @@ export function isScratchActive(deckId) { return !!scratchState[deckId]?.active;
 export function hasScratchBuffer(deckId) { return !!scratchState[deckId]?.buffers; }
 
 
-// Headphone helpers
-let hpMixCue = 0.0;             // 0..1; 0..0.5 = master only, 0.5..1 = master→cue fade
+// Headphone helpers — Hercules T7 spec (per device manual):
+//   • PFL Master button (hpMasterEnabled): include/exclude the master output
+//     from the headphone path. When OFF, master never reaches headphones
+//     regardless of the Mix knob.
+//   • Mix knob (hpMixCue): linear blend.
+//        LEFT  = full CUE (PFL'd decks only, no master)
+//        RIGHT = full MASTER (live mix only, no cue)
+//        CENTER = 50/50.
+//   • Per-deck PFL (cueSend on each chain): routes that deck pre-fader into
+//     the cue bus. Without any PFL'd deck, the cue side is silent.
+let hpMasterEnabled = true;     // PFL Master button — master in HP path?
+let hpMixCue = 0.0;             // 0 = full cue (left), 1 = full master (right)
 let hpSplitCue = false;         // L=cue / R=master split-cue mode
 
 function applyHpGains() {
   const { ctx, hpCueGain, hpMasterGain } = getAudioContext();
-  // Asymmetric mapping per user spec: the bottom half of the knob's travel
-  // (0..0.5) is "master only — no cue bleed", and the top half (0.5..1)
-  // fades cue in while fading master out. So:
-  //   knob at 0   → master=1, cue=0   (clean live mix in headphones)
-  //   knob at 0.5 → master=1, cue=0   (still clean master at center)
-  //   knob at 0.75→ master=0.5, cue=0.5
-  //   knob at 1   → master=0, cue=1   (PFL'd deck only)
-  // This matches the user's mental model that "center = the deck that is
-  // playing" and "full cue = the cued deck only".
-  let cue, master;
-  if (hpMixCue <= 0.5) {
-    cue = 0;
-    master = 1;
-  } else {
-    const t = (hpMixCue - 0.5) * 2; // 0..1 across the upper half
-    cue = t;
-    master = 1 - t;
-  }
+  // T7 spec mapping: knob value 0..1 where 0=cue, 1=master.
+  const cue = 1 - hpMixCue;
+  const master = hpMasterEnabled ? hpMixCue : 0;
   hpCueGain.gain.setTargetAtTime(cue, ctx.currentTime, 0.02);
   hpMasterGain.gain.setTargetAtTime(master, ctx.currentTime, 0.02);
 }
 
 export function setHeadphoneMix(value01) {
-  // 0 = full master, 1 = full cue (asymmetric mapping — see applyHpGains)
+  // 0 = full cue (LEFT on T7 spec), 1 = full master (RIGHT)
   hpMixCue = Math.max(0, Math.min(1, value01));
   applyHpGains();
 }
 
-// Legacy MASTER toggle removed — the new asymmetric knob makes it redundant.
-// Keep a no-op stub so any old call sites don't break.
-export function setHeadphoneMasterEnabled(_enabled) { /* deprecated */ }
-export function isHeadphoneMasterEnabled() { return true; }
+export function setHeadphoneMasterEnabled(enabled) {
+  hpMasterEnabled = !!enabled;
+  applyHpGains();
+}
+
+export function isHeadphoneMasterEnabled() { return hpMasterEnabled; }
 
 /**
  * Hard split-cue: in SPLIT mode the headphone output becomes

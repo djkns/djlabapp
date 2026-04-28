@@ -5,7 +5,7 @@ import {
   getAudioContext, resumeAudioContext,
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, enableMicWithStream, setMicVolume,
-  enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneSplit,
+  enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled, setHeadphoneSplit,
   getDeckChain, DJ_MIC_CONSTRAINTS, getMicAnalyser,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
@@ -442,6 +442,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   // Headphone sync → audio engine
   useEffect(() => { setHeadphoneMix(hp.mix); }, [hp.mix]);
   useEffect(() => { setHeadphoneVolume(hp.volume); }, [hp.volume]);
+  useEffect(() => { setHeadphoneMasterEnabled(!!hp.masterEnabled); }, [hp.masterEnabled]);
   useEffect(() => { setHeadphoneSplit(!!hp.splitCue); }, [hp.splitCue]);
   useEffect(() => { enableHeadphones(hp.enabled); }, [hp.enabled]);
 
@@ -515,6 +516,18 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             <HpIcon className="w-3 h-3" />
           </button>
           <button
+            data-testid="hp-master"
+            onClick={() => setHp({ masterEnabled: !hp.masterEnabled })}
+            className={`text-[9px] font-mono-dj tracking-[0.18em] px-2 py-0.5 rounded border transition-all ${
+              hp.masterEnabled
+                ? "border-[#00D4FF]/60 text-[#00D4FF] bg-[#00D4FF]/10 shadow-[0_0_8px_#00D4FF55]"
+                : "border-white/15 text-[#52525B] hover:border-white/40 hover:text-white/80"
+            }`}
+            title="PFL MASTER — include master output in the headphone mix (T7 PFL Master button)"
+          >
+            MASTER
+          </button>
+          <button
             data-testid="hp-split"
             onClick={() => setHp({ splitCue: !hp.splitCue })}
             className={`text-[9px] font-mono-dj tracking-[0.18em] px-2 py-0.5 rounded border transition-all ${
@@ -522,18 +535,18 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
                 ? "border-[#FF9500]/70 text-[#FF9500] bg-[#FF9500]/10 shadow-[0_0_8px_#FF950055]"
                 : "border-white/15 text-[#52525B] hover:border-white/40 hover:text-white/80"
             }`}
-            title="SPLIT — left ear = cue, right ear = master (overrides CUE MIX)"
+            title="SPLIT — left ear = cue, right ear = master (overrides MIX)"
           >
             SPLIT
           </button>
           <EQKnob
-            label="CUE" value={hp.mix} min={0} max={1}
+            label="MIX" value={hp.mix} min={0} max={1}
             onChange={(v) => setHp({ mix: Math.max(0, Math.min(1, v)) })}
             testid="hp-mix"
             color="#00D4FF"
           />
-          <span className="text-[7px] font-mono-dj tracking-[0.15em] text-[#52525B] -mt-1" title="Knob ←  Master only · Knob →  PFL'd deck only">
-            MSTR ← → CUE
+          <span className="text-[7px] font-mono-dj tracking-[0.15em] text-[#52525B] -mt-1" title="T7 spec: knob LEFT = CUE only · knob RIGHT = MASTER only">
+            CUE ← → MSTR
           </span>
           <EQKnob
             label="HP VOL" value={hp.volume} min={0} max={1.2}

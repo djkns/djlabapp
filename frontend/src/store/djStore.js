@@ -75,12 +75,14 @@ export const useDJStore = create(
       masterVolume: 1.0,
       recording: false,
 
-      // Headphones
+      // Headphones — Hercules T7 spec
       hp: {
         enabled: false,
-        mix: 0.0,      // asymmetric knob: 0..0.5 = master only, 0.5..1 = master→cue fade
-        masterEnabled: true, // legacy — kept for persisted-state compat; no longer used
-        splitCue: false, // SPLIT: L=cue / R=master per-ear monitoring
+        // T7 mix knob: 0 = full CUE (left), 1 = full MASTER (right). Default
+        // points to MASTER so on first load you only hear the live mix.
+        mix: 1.0,
+        masterEnabled: true, // PFL MASTER button — include master in HP path
+        splitCue: false,     // SPLIT: L=cue / R=master per-ear monitoring
         volume: 0.8,
         sinkId: "default",
       },
