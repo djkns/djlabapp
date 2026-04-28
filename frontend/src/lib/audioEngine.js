@@ -12,9 +12,14 @@ import { createFXSlot } from "./fxRack";
 //   masterGain -> masterStreamDest (for MediaRecorder)
 //
 // Headphone / cue bus:
-//   cueBus -> headphoneMix(cue)  ─┐
-//   masterGain -> headphoneMix(master) ─┴─> headphoneGain
-//      headphoneGain -> headphoneStreamDest -> <audio>.srcObject (+ setSinkId for physical routing)
+//   Blend path (default):
+//     cueBus    -> hpCueGain    ─┐
+//     masterGain -> hpMasterGain ─┴─> blendOutGain ─┐
+//                                                   ├─> hpGain -> stream -> <audio>
+//   Split path (T7-style ear split, L=cue / R=master):
+//     cueBus    -> splitCueMono   -> ChannelMerger.in[0]  (Left)  ─┐
+//     masterGain -> splitMasterMono -> ChannelMerger.in[1] (Right) ─┴─> splitOutGain ─┘
+//   blendOutGain and splitOutGain crossfade to switch between the two routings.
 
 let ctx = null;
 let masterGain = null;
@@ -22,12 +27,19 @@ let masterStreamDest = null;
 let masterAnalyser = null;
 
 let cueBus = null;            // sums all decks' cue sends
-let hpCueGain = null;         // cue portion of the headphone mix
-let hpMasterGain = null;      // master portion of the headphone mix
+let hpCueGain = null;         // cue portion of the headphone mix (blend path)
+let hpMasterGain = null;      // master portion of the headphone mix (blend path)
 let hpGain = null;            // headphone master volume
 let hpStreamDest = null;      // to feed the physical headphone <audio>
 let hpAudioEl = null;         // the element bound to hpStreamDest
 let hpSinkId = "default";
+
+// Split-cue routing: hard L=cue / R=master via a ChannelMerger.
+let blendOutGain = null;      // gates the standard blend path (1 normally, 0 in split)
+let splitOutGain = null;      // gates the split path (1 in split, 0 normally)
+let splitCueMono = null;      // mono sum of cue bus → merger input 0 (Left)
+let splitMasterMono = null;   // mono sum of master → merger input 1 (Right)
+let splitMerger = null;       // ChannelMerger(2) producing stereo cue|master
 
 export function getAudioContext() {
   if (!ctx) {
@@ -64,11 +76,44 @@ export function getAudioContext() {
     hpGain = ctx.createGain();
     hpGain.gain.value = 0.8;
 
+    // ---- Blend path (default): cue + master mixed through hpGain ----
+    blendOutGain = ctx.createGain();
+    blendOutGain.gain.value = 1.0;
+
     cueBus.connect(hpCueGain);
-    hpCueGain.connect(hpGain);
+    hpCueGain.connect(blendOutGain);
 
     masterGain.connect(hpMasterGain);
-    hpMasterGain.connect(hpGain);
+    hpMasterGain.connect(blendOutGain);
+
+    blendOutGain.connect(hpGain);
+
+    // ---- Split path: hard L=cue / R=master via ChannelMerger ----
+    // Each side gets summed to mono first (channelCount=1, mixer downmix),
+    // then fed into one channel of a stereo merger. Gated off until SPLIT on.
+    splitOutGain = ctx.createGain();
+    splitOutGain.gain.value = 0.0;
+
+    splitCueMono = ctx.createGain();
+    splitCueMono.channelCount = 1;
+    splitCueMono.channelCountMode = "explicit";
+    splitCueMono.channelInterpretation = "speakers";
+
+    splitMasterMono = ctx.createGain();
+    splitMasterMono.channelCount = 1;
+    splitMasterMono.channelCountMode = "explicit";
+    splitMasterMono.channelInterpretation = "speakers";
+
+    splitMerger = ctx.createChannelMerger(2);
+
+    cueBus.connect(splitCueMono);
+    splitCueMono.connect(splitMerger, 0, 0); // → Left
+
+    masterGain.connect(splitMasterMono);
+    splitMasterMono.connect(splitMerger, 0, 1); // → Right
+
+    splitMerger.connect(splitOutGain);
+    splitOutGain.connect(hpGain);
 
     hpStreamDest = ctx.createMediaStreamDestination();
     hpGain.connect(hpStreamDest);
@@ -218,6 +263,13 @@ const deckChains = {};
 export function registerDeckChain(deckId, chain) { deckChains[deckId] = chain; }
 export function getDeckChain(deckId) { return deckChains[deckId] || null; }
 export function getAllDeckChains() { return deckChains; }
+
+// Registry of each deck's <audio> element for cross-deck features that need
+// sub-frame currentTime accuracy (e.g. BPM/phase sync). Decks register their
+// element on mount via Deck.jsx.
+const deckAudioEls = {};
+export function registerDeckAudioEl(deckId, el) { deckAudioEls[deckId] = el; }
+export function getDeckAudioEl(deckId) { return deckAudioEls[deckId] || null; }
 
 // -------- Scratch Engine (per-deck) ----------------------------------------
 //
@@ -380,6 +432,7 @@ export function hasScratchBuffer(deckId) { return !!scratchState[deckId]?.buffer
 // Headphone helpers
 let hpMasterEnabled = true;     // T7-style MASTER-to-HP toggle
 let hpMixCue = 0.5;             // 0 = master only, 1 = cue only
+let hpSplitCue = false;         // L=cue / R=master split-cue mode
 
 function applyHpGains() {
   const { ctx, hpCueGain, hpMasterGain } = getAudioContext();
@@ -401,6 +454,25 @@ export function setHeadphoneMasterEnabled(enabled) {
 }
 
 export function isHeadphoneMasterEnabled() { return hpMasterEnabled; }
+
+/**
+ * Hard split-cue: in SPLIT mode the headphone output becomes
+ *   Left  = sum of all PFL'd decks (cue bus)
+ *   Right = master mix
+ * So you can monitor a cued track in one ear while still hearing the live mix
+ * in the other. Crossfades the blend path out and the split path in over ~30ms
+ * so toggling doesn't click.
+ */
+export function setHeadphoneSplit(enabled) {
+  hpSplitCue = !!enabled;
+  const { ctx } = getAudioContext();
+  const t = ctx.currentTime;
+  // Crossfade the two parallel paths
+  blendOutGain.gain.setTargetAtTime(hpSplitCue ? 0 : 1, t, 0.02);
+  splitOutGain.gain.setTargetAtTime(hpSplitCue ? 1 : 0, t, 0.02);
+}
+
+export function isHeadphoneSplit() { return hpSplitCue; }
 
 export function setHeadphoneVolume(v) {
   const { ctx, hpGain } = getAudioContext();

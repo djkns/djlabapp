@@ -11,7 +11,7 @@ import FXSlot from "./FXSlot";
 import { useDJStore } from "@/store/djStore";
 import { useShallow } from "zustand/react/shallow";
 import {
-  createDeckChain, registerDeckChain, resumeAudioContext, getAudioContext,
+  createDeckChain, registerDeckChain, registerDeckAudioEl, getDeckAudioEl, resumeAudioContext, getAudioContext,
   setScratchBuffer, clearScratchBuffer, enterScratchMode, exitScratchMode, scratchTick, hasScratchBuffer,
 } from "@/lib/audioEngine";
 import { readTags, readTagsFromUrl } from "@/lib/mediaTags";
@@ -45,6 +45,7 @@ export default function Deck({ id, label, accent }) {
     tempoRange: s[id].tempoRange,
     keylock: s[id].keylock,
     pflOn: s[id].pflOn,
+    syncedTo: s[id].syncedTo,
     cuePoint: s[id].cuePoint,
     hotCues: s[id].hotCues,
   })));
@@ -56,6 +57,7 @@ export default function Deck({ id, label, accent }) {
   const setDeckEQ = useDJStore((s) => s.setDeckEQ);
   const setHotCue = useDJStore((s) => s.setHotCue);
   const setPfl = useDJStore((s) => s.setPfl);
+  const setSyncedTo = useDJStore((s) => s.setSyncedTo);
 
   const [beatFlash, setBeatFlash] = useState(false);
   const [analyzingBPM, setAnalyzingBPM] = useState(false);
@@ -72,6 +74,7 @@ export default function Deck({ id, label, accent }) {
     el.crossOrigin = "anonymous";
     el.preload = "auto";
     audioElRef.current = el;
+    registerDeckAudioEl(id, el);
 
     try {
       chainRef.current = createDeckChain(el);
@@ -501,7 +504,7 @@ export default function Deck({ id, label, accent }) {
       const wsLoaded = wsRef.current
         ? wsRef.current.load(playUrl).catch((err) => { console.warn("[ws] load failed", err); })
         : Promise.resolve();
-      setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null } });
+      setDeck(id, { loading: false, baseBPM: track.bpm || 120, cuePoint: 0, currentTime: 0, hotCues: Array(8).fill(null), loop: { in: null, out: null, enabled: false, beats: null }, syncedTo: null });
 
       // Auto-detect BPM with MongoDB cache. Flow:
       //   1. GET /api/tracks/meta?key=… → cached BPM + hot_cues, instant.
@@ -873,19 +876,94 @@ export default function Deck({ id, label, accent }) {
   };
   const setCueHere = () => setDeck(id, { cuePoint: audioElRef.current.currentTime });
 
+  // Sync: tempo + phase match the OTHER deck. Toggling.
+  //   • Press once  → engage: BPM-match, phase-align beats, follow tempo changes
+  //   • Press again → disengage: stop tracking; user keeps the last applied tempo
+  //
+  // We don't currently store an explicit beat grid (downbeat at t=0 is the
+  // working assumption — the BPM detector treats the first audio frame as the
+  // start of the bar). For the vast majority of cleanly-cut releases this is
+  // accurate; for tracks with long intros / pickup notes the user can nudge
+  // with the tempo fader after engaging sync.
   const sync = () => {
-    // Read the OTHER deck fresh from the store at click-time — avoids
-    // subscribing the Deck shell to cross-deck state (which would re-render
-    // every Deck on every tempo nudge of the other one).
+    const otherId = id === "deckA" ? "deckB" : "deckA";
     const s = useDJStore.getState();
-    const other = id === "deckA" ? s.deckB : s.deckA;
-    if (!other?.track || !deck.baseBPM) return;
-    const otherCurrent = other.baseBPM * (1 + other.tempoPct / 100);
-    if (!otherCurrent) return;
-    const desiredPct = (otherCurrent / deck.baseBPM - 1) * 100;
-    const clamp = Math.max(-deck.tempoRange, Math.min(deck.tempoRange, desiredPct));
-    setDeck(id, { tempoPct: clamp });
+    const me = s[id];
+    const other = s[otherId];
+
+    // Already synced → release
+    if (me.syncedTo === otherId) {
+      setSyncedTo(id, null);
+      toast.message(`Sync released — Deck ${id === "deckA" ? "A" : "B"}`);
+      return;
+    }
+
+    if (!other?.track || !me.baseBPM || !other.baseBPM) {
+      toast.error("Sync needs a track loaded on both decks");
+      return;
+    }
+
+    // 1) BPM match (within tempo range)
+    const otherBPM = other.baseBPM * (1 + (other.tempoPct || 0) / 100);
+    const desiredPct = (otherBPM / me.baseBPM - 1) * 100;
+    const clamped = Math.max(-me.tempoRange, Math.min(me.tempoRange, desiredPct));
+    setDeck(id, { tempoPct: clamped });
+
+    // 2) Phase align — snap follower's currentTime to the nearest beat
+    //    grid match of the master deck. Reads live currentTime from each
+    //    audio element to avoid the 4Hz store-tick lag.
+    const myEl = audioElRef.current;
+    const otherEl = getDeckAudioEl(otherId);
+    if (myEl && otherEl && myEl.duration && otherEl.duration) {
+      const masterBPM = otherBPM;                      // beats per minute
+      const beatPeriod = 60 / masterBPM;               // seconds per beat
+      const masterT = otherEl.currentTime || 0;
+      const myT = myEl.currentTime || 0;
+      const masterPhase = ((masterT % beatPeriod) + beatPeriod) % beatPeriod;
+      const myPhase = ((myT % beatPeriod) + beatPeriod) % beatPeriod;
+      let delta = masterPhase - myPhase;
+      if (delta > beatPeriod / 2) delta -= beatPeriod;
+      if (delta < -beatPeriod / 2) delta += beatPeriod;
+      const target = Math.max(0, Math.min(myEl.duration - 0.05, myT + delta));
+      try { myEl.currentTime = target; } catch { /* noop */ }
+      currentTimeRef.current = target;
+      setDeck(id, { currentTime: target });
+    }
+
+    // 3) Engage: this deck now follows the other's tempo until released
+    setSyncedTo(id, otherId);
+    toast.success(`Synced to Deck ${otherId === "deckA" ? "A" : "B"}`, {
+      description: `${otherBPM.toFixed(1)} BPM · phase aligned`,
+      duration: 2000,
+    });
   };
+
+  // While sync is engaged, follow the master deck's tempo. Subscribes
+  // imperatively to dodge a Deck-wide re-render on every tempoPct tick.
+  useEffect(() => {
+    if (!deck.syncedTo) return;
+    const otherId = deck.syncedTo;
+    const recompute = () => {
+      const s = useDJStore.getState();
+      const me = s[id];
+      const other = s[otherId];
+      if (me.syncedTo !== otherId || !me.baseBPM || !other?.baseBPM) return;
+      const otherBPM = other.baseBPM * (1 + (other.tempoPct || 0) / 100);
+      const desiredPct = (otherBPM / me.baseBPM - 1) * 100;
+      const clamped = Math.max(-me.tempoRange, Math.min(me.tempoRange, desiredPct));
+      if (Math.abs(clamped - (me.tempoPct || 0)) > 0.005) {
+        setDeck(id, { tempoPct: clamped });
+      }
+    };
+    const unsub = useDJStore.subscribe((state, prev) => {
+      const o = state[otherId]; const p = prev[otherId];
+      if (!o || !p) return;
+      if (o.baseBPM === p.baseBPM && o.tempoPct === p.tempoPct) return;
+      recompute();
+    });
+    recompute();
+    return () => unsub?.();
+  }, [deck.syncedTo, id, setDeck]);
 
   const toggleTempoRange = () => setDeck(id, { tempoRange: deck.tempoRange === 8 ? 16 : 8 });
 
@@ -1205,8 +1283,13 @@ export default function Deck({ id, label, accent }) {
           </div>
           <button data-testid={`deck-${letter}-sync`} onClick={sync}
             disabled={!deck.track}
-            className="px-2 py-1 rounded border border-white/20 bg-transparent text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-            Sync
+            title={deck.syncedTo ? "Sync engaged — click to release" : "Beat & tempo sync to the other deck"}
+            className={`px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-[0.2em] transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+              deck.syncedTo
+                ? "border-[#FF1F1F] bg-[#D10A0A]/30 text-[#FF6B6B] shadow-[0_0_10px_#FF1F1F88]"
+                : "border-white/20 bg-transparent hover:bg-[#D10A0A]/20 hover:border-[#D10A0A] hover:text-[#FF1F1F]"
+            }`}>
+            {deck.syncedTo ? "Sync ●" : "Sync"}
           </button>
         </div>
 

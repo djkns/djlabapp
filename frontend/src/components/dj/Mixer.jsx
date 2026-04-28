@@ -5,7 +5,7 @@ import {
   getAudioContext, resumeAudioContext,
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, enableMicWithStream, setMicVolume,
-  enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled,
+  enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled, setHeadphoneSplit,
   getDeckChain, DJ_MIC_CONSTRAINTS, getMicAnalyser,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
@@ -167,8 +167,17 @@ function TempoFaderInner({ deckId, letter }) {
   const tempoPct = useDJStore((s) => s[deckId].tempoPct);
   const tempoRange = useDJStore((s) => s[deckId].tempoRange);
   const setDeck = useDJStore((s) => s.setDeck);
-  const onChange = useCallback((v) => setDeck(deckId, { tempoPct: v }), [deckId, setDeck]);
-  const onReset  = useCallback(() => setDeck(deckId, { tempoPct: 0 }), [deckId, setDeck]);
+  const setSyncedTo = useDJStore((s) => s.setSyncedTo);
+  // Manual fader move = break sync (standard DJ-mixer behavior). The follow
+  // effect would otherwise immediately overwrite the user's value.
+  const onChange = useCallback((v) => {
+    if (useDJStore.getState()[deckId].syncedTo) setSyncedTo(deckId, null);
+    setDeck(deckId, { tempoPct: v });
+  }, [deckId, setDeck, setSyncedTo]);
+  const onReset  = useCallback(() => {
+    if (useDJStore.getState()[deckId].syncedTo) setSyncedTo(deckId, null);
+    setDeck(deckId, { tempoPct: 0 });
+  }, [deckId, setDeck, setSyncedTo]);
   return (
     <div className="flex flex-col items-center gap-1 pt-2">
       <span className="label-tiny">TEMPO</span>
@@ -434,6 +443,7 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   useEffect(() => { setHeadphoneMix(hp.mix); }, [hp.mix]);
   useEffect(() => { setHeadphoneVolume(hp.volume); }, [hp.volume]);
   useEffect(() => { setHeadphoneMasterEnabled(hp.masterEnabled); }, [hp.masterEnabled]);
+  useEffect(() => { setHeadphoneSplit(!!hp.splitCue); }, [hp.splitCue]);
   useEffect(() => { enableHeadphones(hp.enabled); }, [hp.enabled]);
 
   const start = async () => {
@@ -516,6 +526,18 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             title="Toggle master mix into headphones (T7 MASTER button)"
           >
             MASTER
+          </button>
+          <button
+            data-testid="hp-split"
+            onClick={() => setHp({ splitCue: !hp.splitCue })}
+            className={`text-[9px] font-mono-dj tracking-[0.18em] px-2 py-0.5 rounded border transition-all ${
+              hp.splitCue
+                ? "border-[#FF9500]/70 text-[#FF9500] bg-[#FF9500]/10 shadow-[0_0_8px_#FF950055]"
+                : "border-white/15 text-[#52525B] hover:border-white/40 hover:text-white/80"
+            }`}
+            title="SPLIT — left ear = cue, right ear = master (overrides CUE MIX)"
+          >
+            SPLIT
           </button>
           <EQKnob
             label="CUE MIX" value={hp.mix} min={0} max={1}

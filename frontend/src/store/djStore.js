@@ -60,6 +60,7 @@ const defaultDeck = () => ({
   hotCues: emptyHotCues(),
   loop: { in: null, out: null, enabled: false, beats: null },
   pflOn: false,
+  syncedTo: null,                            // null | "deckA" | "deckB" — when set, this deck follows that deck's tempo
   // Per-deck FX slots
   fx1: { effect: "reverb", enabled: false, amount: 0.5, division: "1/4" },
   fx2: { effect: "delay",  enabled: false, amount: 0.5, division: "1/4" },
@@ -79,6 +80,7 @@ export const useDJStore = create(
         enabled: false,
         mix: 0.5,      // 0 = master, 1 = cue
         masterEnabled: true, // T7-style MASTER button: toggle master into HP path
+        splitCue: false, // SPLIT: L=cue / R=master per-ear monitoring
         volume: 0.8,
         sinkId: "default",
       },
@@ -137,7 +139,16 @@ export const useDJStore = create(
 
       // Headphones
       setHp: (patch) => set((s) => ({ hp: { ...s.hp, ...patch } })),
-      setPfl: (id, on) => set((s) => ({ [id]: { ...s[id], pflOn: on } })),
+      setPfl: (id, on) => set((s) => {
+        // Auto-enable headphones the first time a deck's CUE is engaged so
+        // the user actually hears the cue feed without having to click HP.
+        const next = { [id]: { ...s[id], pflOn: on } };
+        if (on && !s.hp.enabled) {
+          next.hp = { ...s.hp, enabled: true };
+        }
+        return next;
+      }),
+      setSyncedTo: (id, target) => set((s) => ({ [id]: { ...s[id], syncedTo: target } })),
 
       // Mic
       setMic: (patch) => set((s) => ({ mic: { ...s.mic, ...patch } })),
