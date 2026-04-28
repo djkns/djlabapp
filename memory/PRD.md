@@ -24,10 +24,21 @@ Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia eco
 - **Storage**: AWS S3 for track library
 
 ## Recent (Feb 2026)
+- **Headphone & Sync overhaul (Feb 2026)** — verified by testing agent (iteration_3.json, 12/12 features pass):
+  - **HP auto-enable**: pressing CUE/PFL on any deck now auto-flips `hp.enabled` so the user actually hears the cue without remembering to click HP first.
+  - **SPLIT mode**: new `SPLIT` button next to MASTER in the HP column. When on, audio routes through a `ChannelMerger` so left ear = sum of PFL'd decks (cue bus), right ear = master mix. Implemented as a dual-path graph with `blendOutGain`/`splitOutGain` crossfade so toggling is click-free.
+  - **Beat-phase Sync**: pressing Sync now BPM-matches **and** snaps the follower's `currentTime` so its beat phase aligns with the master's (uses live `audioEl.currentTime` via new `registerDeckAudioEl/getDeckAudioEl` registry; phase = `t mod beatPeriod`, snap delta normalized to ±beatPeriod/2).
+  - **Sync stays engaged**: `deck.syncedTo` ("deckA"|"deckB"|null) tracks the lock. While engaged, an imperative `useDJStore.subscribe` re-applies tempo whenever the master deck's `tempoPct`/`baseBPM` changes (no Deck-wide re-renders).
+  - **Manual tempo breaks sync** (standard mixer behavior): TempoFader's `onChange`/`onReset` clear `syncedTo` automatically.
+  - **Track load clears sync**: `loadTrack` resets `syncedTo:null` since BPM changed.
+  - **Sync button visual**: glows red with a `●` indicator when engaged.
+
 - **Hot-cue marker delete UX simplified** (Feb 2026):
   - **Double-click** the marker → delete (primary, most natural gesture).
   - **Right-click** the marker → delete (quiet power-user fallback).
   - Removed the on-hover `×` badge — too fiddly on a 2px stem; user feedback "kinda hard to get use to right clicking x to delete".
+  - Marker testids standardized to lowercase: `deck-{a|b}-marker-{1..8}` (was `deck-deckA-...`).
+
 - **P0 FIX — Hot-cue markers are fully interactive** on the waveform:
   - **Move**: Shift- or Alt-drag the stem horizontally to reposition; commit on release (persists to `/api/tracks/meta` via existing debounce).
   - **Seek**: plain click still jumps the playhead to the cue (unchanged).

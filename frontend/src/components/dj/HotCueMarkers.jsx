@@ -25,6 +25,8 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
   const clearHotCue = useDJStore((s) => s.clearHotCue);
   const setHotCue = useDJStore((s) => s.setHotCue);
   const layerRef = useRef(null);
+  // Use lowercase letter to match the rest of the deck testids (deck-a-*).
+  const letter = deckId === "deckA" ? "a" : "b";
 
   // Mount the marker-layer once into wavesurfer's wrapper.
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
       // everywhere EXCEPT on the marker stems (each stem sets pointer-events:auto).
       layer.style.pointerEvents = "none";
       layer.style.zIndex = "3";
-      layer.dataset.testid = `deck-${deckId}-hotcue-layer`;
+      layer.dataset.testid = `deck-${letter}-hotcue-layer`;
       wrapper.appendChild(layer);
       layerRef.current = layer;
     };
@@ -103,7 +105,7 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           touch-action:none;
         `;
         stem.title = `Cue ${i + 1} — ${sec.toFixed(2)}s\nClick: jump · Double-click: delete · Shift/Alt+drag: move`;
-        stem.dataset.testid = `deck-${deckId}-marker-${i + 1}`;
+        stem.dataset.testid = `deck-${letter}-marker-${i + 1}`;
         stem.dataset.cueSlot = String(i);
 
         // Flag (number badge)
