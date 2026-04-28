@@ -98,25 +98,37 @@ export default function MidiDispatcher() {
       }
 
       if (isJogControl(ctrl)) {
-        // Two encodings supported:
+        // Hercules T7 + similar motorized-platter controllers send the
+        // jog wheel as PAIRED messages, interleaved every few ms:
+        //   • CC (Controller 9)  — absolute position counter (0–127)
+        //   • Pitch Bend         — signed velocity (14-bit, ±8192)
         //
-        //  1. CC (`type === 0xB0`, status 176): relative offset-64 — value
-        //     64 idle, >64 forward, <64 backward. Most controllers.
+        // Older/simpler controllers send only the CC offset-64 (idle=64).
+        // We support both encodings.
         //
-        //  2. Pitch Bend (`type === 0xE0`, status 224): high-precision
-        //     14-bit, used by Hercules T7 (and some others). The full
-        //     value is `(data2 << 7) | data1`, ranging 0..16383 with
-        //     8192 as center. We convert to a small signed delta of
-        //     ticks per message — empirically T7 emits ~1 message per
-        //     1/128th rotation tick, so `(value - 8192) / 64` gives a
-        //     delta on the same scale as the CC path.
+        //  Pitch Bend velocity: convert directly to a tick-scale delta.
+        //  Empirically T7 emits ~1 message per 1/128th rotation at full
+        //  spin → value range ±8192 maps nicely to ±8 ticks / message.
+        //  CC position-counter: compute delta from previous value.
+        //
         const t = e.detail.type;
         let delta;
         if (t === 0xE0) {
           const value14 = (e.detail.data2 << 7) | e.detail.data1;
-          delta = Math.round((value14 - 8192) / 64);
+          delta = Math.round((value14 - 8192) / 1024);
         } else {
-          delta = data2 - 64;
+          // CC. If the control is known-absolute (incrementing counter
+          // like T7's Controller 9), track prev value and emit signed
+          // delta with 7-bit wrap-around. Otherwise treat as offset-64.
+          const prev = lastValueRef.current[`${sig}:pos`];
+          if (prev != null && Math.abs(data2 - prev) < 64) {
+            // Short delta → likely a continuous position counter
+            delta = data2 - prev;
+          } else {
+            // Treat as offset-64 relative encoder (idle = 64)
+            delta = data2 - 64;
+          }
+          lastValueRef.current[`${sig}:pos`] = data2;
         }
         if (delta === 0) return;
         window.dispatchEvent(new CustomEvent("dj:action", { detail: { action: ctrl, value: delta } }));
