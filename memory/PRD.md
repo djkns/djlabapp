@@ -24,27 +24,26 @@ Build a DJ Web App called **DJ Lab** — part of The NU Vibe / DJsandMCMedia eco
 - **Storage**: AWS S3 for track library
 
 ## Recent (Feb 2026)
-- **Headphone & Sync overhaul (Feb 2026)** — verified by testing agent (iteration_3.json, 12/12 features pass):
-  - **HP auto-enable**: pressing CUE/PFL on any deck now auto-flips `hp.enabled` so the user actually hears the cue without remembering to click HP first.
-  - **SPLIT mode**: new `SPLIT` button next to MASTER in the HP column. When on, audio routes through a `ChannelMerger` so left ear = sum of PFL'd decks (cue bus), right ear = master mix. Implemented as a dual-path graph with `blendOutGain`/`splitOutGain` crossfade so toggling is click-free.
-  - **Beat-phase Sync**: pressing Sync now BPM-matches **and** snaps the follower's `currentTime` so its beat phase aligns with the master's (uses live `audioEl.currentTime` via new `registerDeckAudioEl/getDeckAudioEl` registry; phase = `t mod beatPeriod`, snap delta normalized to ±beatPeriod/2).
-  - **Sync stays engaged**: `deck.syncedTo` ("deckA"|"deckB"|null) tracks the lock. While engaged, an imperative `useDJStore.subscribe` re-applies tempo whenever the master deck's `tempoPct`/`baseBPM` changes (no Deck-wide re-renders).
-  - **Manual tempo breaks sync** (standard mixer behavior): TempoFader's `onChange`/`onReset` clear `syncedTo` automatically.
-  - **Track load clears sync**: `loadTrack` resets `syncedTo:null` since BPM changed.
-  - **Sync button visual**: glows red with a `●` indicator when engaged.
+- **P0 FIX — Blank waveform on second deck (RESOLVED, 4th recurrence)** verified by iteration_4.json (9/9 PASS including exact bug repro):
+  - **Root cause** (via troubleshoot agent): wavesurfer v7's `"ready"` event fires after audio decode but BEFORE canvas paint (`"redraw"`). The cached-path branch returned early after `await wsLoaded` when `getDuration() >= 0.5` was true — the canvas was still blank because `redraw` hadn't fired yet.
+  - **Fix**: both cached-path and non-cached-path branches in `Deck.jsx loadTrack` now ALWAYS call `wsRef.current.load(playUrl, peaks, buf.duration)` from a decoded `AudioBuffer`. That path paints the canvas synchronously, eliminating the race entirely. Playhead and play-state are preserved across the forced re-load.
+  - Buffer reuse via `wsRef.current.getDecodedData()` avoids a redundant fetch when wavesurfer already has it.
 
-- **Hot-cue marker delete UX simplified** (Feb 2026):
-  - **Double-click** the marker → delete (primary, most natural gesture).
-  - **Right-click** the marker → delete (quiet power-user fallback).
-  - Removed the on-hover `×` badge — too fiddly on a 2px stem; user feedback "kinda hard to get use to right clicking x to delete".
-  - Marker testids standardized to lowercase: `deck-{a|b}-marker-{1..8}` (was `deck-deckA-...`).
+- **Hot cue MOVE simplified** (Feb 2026):
+  - **Plain drag** on a marker now repositions it (no Shift/Alt required). Plain click without movement still seeks. Double-click + right-click still delete. Drag threshold 4px so a tap doesn't accidentally move.
 
-- **P0 FIX — Hot-cue markers are fully interactive** on the waveform:
-  - **Move**: Shift- or Alt-drag the stem horizontally to reposition; commit on release (persists to `/api/tracks/meta` via existing debounce).
-  - **Seek**: plain click still jumps the playhead to the cue (unchanged).
-  - Waveform scrub handler skips when pointerdown lands on anything with a `-marker-` testid in its `composedPath`, so dragging markers never competes with scrub.
-  - `window.useDJStore` exposed for E2E test inspection.
-  - Verified end-to-end: 6/6 interactions pass via the frontend testing agent (iteration_2.json).
+- **Smart sync (half/double aware)** (Feb 2026):
+  - Sync now evaluates 1×, ÷2, ×2 candidates and picks whichever fits within ±tempoRange and lands closest to the follower's natural BPM. Solves the classic 82↔164 BPM detector confusion. Toast shows `÷2` or `×2` when half/double matching kicks in.
+  - **÷2 / ×2 BPM buttons** added next to each deck's BPM input for one-click correction of misdetected tempos.
+
+- **Headphone flow rebuilt to T7 spec** (Feb 2026):
+  - **CUE auto-enables HP** the first time it's pressed (no more dead phones).
+  - **MIX knob**: linear blend, **LEFT = full CUE / RIGHT = full MASTER**, default to MASTER. Label `CUE ← → MSTR` on a single line.
+  - **MASTER button** (PFL Master per T7 manual): toggles whether master is in the HP path at all.
+  - **SPLIT button**: routes L=cue / R=master via `ChannelMerger` for per-ear monitoring. Click-free crossfade between blend and split paths via parallel out-gains.
+
+- **Hot-cue marker delete UX** (Feb 2026):
+  - Double-click marker → delete. Right-click → delete (fallback). Removed the fiddly × badge.
 
 ## Implemented (as of Apr 2026)
 - Two decks, picture-disc spinning vinyl
