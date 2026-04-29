@@ -161,13 +161,10 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           // Stop the parent waveform from starting a scrub
           e.stopPropagation();
 
-          const layerEl = layerRef.current;
-          const rect = layerEl?.getBoundingClientRect();
           dragState = {
             startX: e.clientX,
             startSec: sec,
             moved: false,
-            rect,
             lastSec: sec,
           };
           stem.setPointerCapture?.(e.pointerId);
@@ -178,15 +175,21 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           const dx = e.clientX - dragState.startX;
           if (!dragState.moved && Math.abs(dx) <= DRAG_THRESHOLD_PX) return;
           if (!dragState.moved) {
-            // Cross threshold → enter drag mode
             dragState.moved = true;
             stem.style.cursor = "grabbing";
           }
-          if (!dragState.rect) return;
+          // Re-read the layer rect every move — wavesurfer auto-scrolls the
+          // wrapper during playback, so a rect captured at pointerdown
+          // becomes stale within ~100ms and the marker lands far from the
+          // pointer.
+          const layerEl = layerRef.current;
+          if (!layerEl) return;
+          const rect = layerEl.getBoundingClientRect();
+          if (rect.width <= 0) return;
           const dur = getDuration();
           if (!dur) return;
-          const xRel = e.clientX - dragState.rect.left;
-          const pct = Math.max(0, Math.min(1, xRel / dragState.rect.width));
+          const xRel = e.clientX - rect.left;
+          const pct = Math.max(0, Math.min(1, xRel / rect.width));
           const newSec = Math.max(0, Math.min(dur - 0.05, pct * dur));
           dragState.lastSec = newSec;
           // Visual preview without committing every frame
