@@ -25,6 +25,38 @@ const formatTime = (s) => {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 };
 
+/**
+ * Force-paint wavesurfer's canvas from a decoded AudioBuffer.
+ *
+ * Why: wavesurfer v7's `ws.load(url)` path is unreliable in this app — its
+ * "ready" event fires after audio decode but BEFORE canvas paint, leaving
+ * the canvas blank. Calling `ws.load(url, peaks, duration)` with peaks we
+ * already have paints synchronously and bypasses that race entirely.
+ *
+ * Preserves the audio element's currentTime + play state across the re-load
+ * so a playing track isn't yanked back to t=0.
+ */
+async function paintWaveformFromBuffer({ ws, audioEl, buf, url, label = "?" }) {
+  if (!ws || !buf) return;
+  try {
+    const peaks = [];
+    for (let i = 0; i < buf.numberOfChannels; i++) {
+      peaks.push(buf.getChannelData(i));
+    }
+    const t = audioEl?.currentTime || 0;
+    const wasPlaying = audioEl ? !audioEl.paused : false;
+    await ws.load(url, peaks, buf.duration).catch((err) => {
+      console.warn(`[ws ${label}] peaks-render load failed`, err);
+    });
+    if (audioEl) {
+      try { audioEl.currentTime = t; } catch { /* noop */ }
+      if (wasPlaying) audioEl.play().catch(() => {});
+    }
+  } catch (err) {
+    console.warn(`[ws ${label}] peaks-render threw`, err);
+  }
+}
+
 export default function Deck({ id, label, accent }) {
   const letter = id === "deckA" ? "a" : "b";
   const waveRef = useRef(null);
@@ -549,21 +581,33 @@ export default function Deck({ id, label, accent }) {
               }
               if (cached?.bpm && cached?.musical_key && !needsTagRead) {
                 // BPM + key + tags all cached → skip BPM detect entirely.
-                // Wavesurfer paints peaks itself via the ws.load(playUrl)
-                // call earlier in loadTrack — we don't second-guess it.
-                // We DO still want the decoded buffer for the scratch
-                // engine, but we get it lazily from wavesurfer (no extra
-                // fetch) once it's ready.
+                // Force-paint the waveform from a decoded buffer to dodge
+                // wavesurfer's ready-vs-redraw race.
                 (async () => {
                   try {
                     await wsLoaded;
                     if (useDJStore.getState()[id].track?.key !== trackKey) return;
                     let buf = null;
                     try { buf = wsRef.current?.getDecodedData?.(); } catch { /* ignore */ }
-                    if (buf) {
-                      try { setScratchBuffer(id, buf); } catch (err) { console.warn(`[scratch ${id}] cached buffer register failed`, err); }
+                    if (!buf) {
+                      const resp = await fetch(playUrl);
+                      if (!resp.ok) return;
+                      const arr = await resp.arrayBuffer();
+                      const ac = getAudioContext().ctx;
+                      buf = await ac.decodeAudioData(arr.slice(0));
                     }
-                  } catch { /* fire-and-forget */ }
+                    if (useDJStore.getState()[id].track?.key !== trackKey) return;
+                    try { setScratchBuffer(id, buf); } catch (err) { console.warn(`[scratch ${id}] cached buffer register failed`, err); }
+                    await paintWaveformFromBuffer({
+                      ws: wsRef.current,
+                      audioEl: audioElRef.current,
+                      buf,
+                      url: playUrl,
+                      label: `${id} cached`,
+                    });
+                  } catch (err) {
+                    console.warn(`[ws ${id}] cached-path peaks render threw`, err);
+                  }
                 })();
                 return;
               }
@@ -626,6 +670,19 @@ export default function Deck({ id, label, accent }) {
           // Cheap one-time op per track — reverse buffer is built once on
           // setScratchBuffer.
           try { setScratchBuffer(id, buf); } catch (err) { console.warn(`[scratch ${id}] buffer register failed`, err); }
+          // Force-paint waveform from the decoded buffer
+          {
+            const cur = useDJStore.getState()[id].track;
+            if (cur?.key === trackKey) {
+              await paintWaveformFromBuffer({
+                ws: wsRef.current,
+                audioEl: audioElRef.current,
+                buf,
+                url: playUrl,
+                label: `${id} fresh`,
+              });
+            }
+          }
           // Try the two algorithms web-audio-beat-detector ships:
           //   • analyze(buf) — returns a single tempo (occasionally falls
           //     back to ~120 when it can't lock onto rhythm).
