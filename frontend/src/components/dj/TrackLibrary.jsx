@@ -21,6 +21,7 @@ const MATCH_LABELS = ["±3%", "±6%", "±10%"];
 export default function TrackLibrary({ open, onToggle }) {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("library"); // "library" | "recentA" | "recentB"
   const [matchDeck, setMatchDeck] = useState(null); // null | "deckA" | "deckB"
@@ -42,10 +43,26 @@ export default function TrackLibrary({ open, onToggle }) {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/tracks`)
-      .then((r) => r.json())
-      .then((data) => setTracks(Array.isArray(data) ? data : []))
-      .catch((e) => console.error(e))
+    setLoadError(null);
+    const url = `${process.env.REACT_APP_BACKEND_URL}/api/tracks`;
+    fetch(url)
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.text().catch(() => "");
+          throw new Error(`HTTP ${r.status} ${r.statusText}${body ? ` — ${body.slice(0, 200)}` : ""}`);
+        }
+        return r.json();
+      })
+      .then((data) => {
+        if (!Array.isArray(data)) throw new Error(`Bad response: expected array, got ${typeof data}`);
+        setTracks(data);
+        setLoadError(null);
+      })
+      .catch((e) => {
+        console.error("[library] load failed", e);
+        setTracks([]);
+        setLoadError(`${e.name || "Error"}: ${e.message || String(e)}\nURL: ${url}`);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -292,8 +309,25 @@ export default function TrackLibrary({ open, onToggle }) {
 
             <div ref={containerRef} className="flex-1 min-h-0">
               {filtered.length === 0 ? (
-                <div className="px-4 py-12 text-center text-[#52525B] text-sm">
-                  {loading ? "Loading…" : "No tracks match your search."}
+                <div className="px-4 py-12 text-center text-sm" data-testid="library-empty-state">
+                  {loading ? (
+                    <span className="text-[#52525B]">Loading…</span>
+                  ) : loadError ? (
+                    <div className="space-y-2">
+                      <div className="text-[#FF6B6B] font-bold">Couldn't load library</div>
+                      <pre className="text-[10px] text-[#FF6B6B]/80 whitespace-pre-wrap text-left max-w-xl mx-auto bg-black/40 p-3 rounded border border-[#FF1F1F]/30 font-mono-dj">
+{loadError}
+                      </pre>
+                      <button
+                        onClick={() => window.location.reload()}
+                        className="mt-2 px-3 py-1 text-[10px] tracking-[0.2em] uppercase font-bold border border-white/20 rounded hover:border-white/50 text-[#A1A1AA] hover:text-white"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[#52525B]">No tracks match your search.</span>
+                  )}
                 </div>
               ) : (
                 <VList
