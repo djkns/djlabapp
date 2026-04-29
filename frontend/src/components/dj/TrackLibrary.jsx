@@ -220,19 +220,15 @@ export default function TrackLibrary({ open, onToggle }) {
                 { id: "deckB", label: "Deck B", bpm: deckBBPM, sub: deckBTrack?.name || "—", hasTrack: !!deckBTrack },
               ].map((opt) => {
                 const active = matchDeck === opt.id;
-                const disabled = opt.id !== null && (!opt.hasTrack || !opt.bpm || !isFinite(opt.bpm));
                 return (
                   <button
                     key={opt.label}
                     data-testid={`match-${opt.id || "off"}`}
-                    disabled={disabled}
                     onClick={() => setMatchDeck(opt.id)}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] tracking-[0.22em] uppercase font-bold transition ${
                       active
                         ? "border-[#00D4FF] text-[#00D4FF] bg-[#00D4FF]/10 shadow-[0_0_8px_#00D4FF55]"
-                        : disabled
-                          ? "border-white/5 text-[#52525B] cursor-not-allowed"
-                          : "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/40"
+                        : "border-white/15 text-[#A1A1AA] hover:text-white hover:border-white/40"
                     }`}
                     title={opt.id && opt.bpm ? `${opt.bpm.toFixed(1)} BPM · ${opt.sub}` : "Match disabled"}
                   >
