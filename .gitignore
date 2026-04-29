@@ -743,9 +743,7 @@ credentials.json
 .credentials
 -e 
 # Environment and credential files
-.env
-.env.*
-*.env
+# (.env, .env.*, *.env intentionally NOT ignored — needed for deploys)
 credentials.json
 *.pem
 *.key
