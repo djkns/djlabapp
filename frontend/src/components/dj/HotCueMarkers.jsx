@@ -104,7 +104,7 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           z-index:1;
           touch-action:none;
         `;
-        stem.title = `Cue ${i + 1} — ${sec.toFixed(2)}s\nClick: jump · Drag: move · Double-click: delete`;
+        stem.title = `Cue ${i + 1} — ${sec.toFixed(2)}s\nDrag to move · Double-click to delete`;
         stem.dataset.testid = `deck-${letter}-marker-${i + 1}`;
         stem.dataset.cueSlot = String(i);
 
@@ -200,18 +200,14 @@ export default function HotCueMarkers({ deckId, wsRef, audioElRef, seekTo }) {
           if (!dragState) return;
           const wasDrag = dragState.moved;
           const finalSec = dragState.lastSec;
-          const startSec = dragState.startSec;
           stem.releasePointerCapture?.(e.pointerId);
           stem.style.cursor = "grab";
           dragState = null;
-
           if (wasDrag) {
             // Commit the new position — triggers persistence useEffect in Deck.jsx
             setHotCue(deckId, i, finalSec);
-          } else {
-            // No drag → treat as a click → seek to cue
-            seekTo?.(startSec);
           }
+          // No drag → no-op. Use the HOT CUE pad to jump.
         };
 
         stem.addEventListener("pointerdown", onPointerDown);
