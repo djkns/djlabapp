@@ -231,10 +231,16 @@ function VolumeFader({ deckId, chain }) {
 function MasterVUInner() {
   const [levels, setLevels] = useState({ l: 0, r: 0 });
   useEffect(() => {
-    const { masterAnalyser } = getAudioContext();
-    const buf = new Uint8Array(masterAnalyser.frequencyBinCount);
     let raf;
     const loop = () => {
+      // Fetch the analyser fresh each frame — if the AudioContext got
+      // recreated (or auto-suspended by the browser and resumed), the
+      // captured-at-mount reference would point at a dead node and the
+      // meter would freeze. Also resume the context if Chrome auto-
+      // suspended it (common when the tab loses focus briefly).
+      const { ctx, masterAnalyser } = getAudioContext();
+      if (ctx.state === "suspended") { ctx.resume().catch(() => {}); }
+      const buf = new Uint8Array(masterAnalyser.frequencyBinCount);
       masterAnalyser.getByteTimeDomainData(buf);
       let sum = 0;
       for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
