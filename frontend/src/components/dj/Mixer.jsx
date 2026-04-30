@@ -5,7 +5,7 @@ import {
   getAudioContext, resumeAudioContext,
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, enableMicWithStream, setMicVolume,
-  enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled, setHeadphoneSplit, setSpeakersEnabled,
+  enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled, setHeadphoneSplit,
   getDeckChain, DJ_MIC_CONSTRAINTS, getMicAnalyser,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
@@ -444,7 +444,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   useEffect(() => { setHeadphoneVolume(hp.volume); }, [hp.volume]);
   useEffect(() => { setHeadphoneMasterEnabled(!!hp.masterEnabled); }, [hp.masterEnabled]);
   useEffect(() => { setHeadphoneSplit(!!hp.splitCue); }, [hp.splitCue]);
-  useEffect(() => { setSpeakersEnabled(!hp.phonesOnly); }, [hp.phonesOnly]);
   useEffect(() => { enableHeadphones(hp.enabled); }, [hp.enabled]);
 
   const start = async () => {
@@ -539,18 +538,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             title="SPLIT — left ear = cue, right ear = master (overrides MIX)"
           >
             SPLIT
-          </button>
-          <button
-            data-testid="hp-phones-only"
-            onClick={() => setHp({ phonesOnly: !hp.phonesOnly })}
-            className={`text-[9px] font-mono-dj tracking-[0.18em] px-2 py-0.5 rounded border transition-all ${
-              hp.phonesOnly
-                ? "border-[#FF1F1F]/70 text-[#FF6B6B] bg-[#FF1F1F]/10 shadow-[0_0_8px_#FF1F1F55]"
-                : "border-white/15 text-[#52525B] hover:border-white/40 hover:text-white/80"
-            }`}
-            title="PHONES ONLY — mute the room speakers; only headphones output. Useful with one audio device."
-          >
-            PHONES
           </button>
           <EQKnob
             label="MIX" value={hp.mix} min={0} max={1}

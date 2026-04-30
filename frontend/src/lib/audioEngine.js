@@ -27,7 +27,6 @@ let masterStreamDest = null;
 let masterAnalyser = null;
 
 let cueBus = null;            // sums all decks' cue sends
-let speakersOutGain = null;   // toggleable room-speakers gate (PHONES ONLY mode)
 let hpCueGain = null;         // cue portion of the headphone mix (blend path)
 let hpMasterGain = null;      // master portion of the headphone mix (blend path)
 let hpGain = null;            // headphone master volume
@@ -61,13 +60,7 @@ export function getAudioContext() {
     masterStreamDest = ctx.createMediaStreamDestination();
 
     masterGain.connect(masterAnalyser);
-    // Speaker out is gated by speakersOutGain so a "PHONES ONLY" toggle
-    // can mute the room speakers without affecting the recording feed,
-    // streaming feed, or headphone monitor.
-    speakersOutGain = ctx.createGain();
-    speakersOutGain.gain.value = 1.0;
-    masterAnalyser.connect(speakersOutGain);
-    speakersOutGain.connect(ctx.destination);
+    masterAnalyser.connect(ctx.destination);
     masterGain.connect(masterStreamDest);
 
     // Headphone / cue bus
@@ -490,19 +483,6 @@ export function setHeadphoneSplit(enabled) {
 }
 
 export function isHeadphoneSplit() { return hpSplitCue; }
-
-/**
- * PHONES ONLY mode — silences the room speakers (ctx.destination) while
- * leaving the headphone, recording, and live-stream feeds untouched.
- * Useful for single-output-device setups where the user is monitoring
- * through the same physical device that would otherwise broadcast the
- * master mix into the room.
- */
-export function setSpeakersEnabled(enabled) {
-  const { ctx } = getAudioContext();
-  if (!speakersOutGain) return;
-  speakersOutGain.gain.setTargetAtTime(enabled ? 1 : 0, ctx.currentTime, 0.02);
-}
 
 export function setHeadphoneVolume(v) {
   const { ctx, hpGain } = getAudioContext();
