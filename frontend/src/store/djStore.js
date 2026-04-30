@@ -83,6 +83,7 @@ export const useDJStore = create(
         mix: 1.0,
         masterEnabled: true, // PFL MASTER button — include master in HP path
         splitCue: false,     // SPLIT: L=cue / R=master per-ear monitoring
+        phonesOnly: false,   // PHONES ONLY: mute the room speakers
         volume: 0.8,
         sinkId: "default",
       },
