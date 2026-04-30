@@ -57,6 +57,46 @@ async function paintWaveformFromBuffer({ ws, audioEl, buf, url, label = "?" }) {
   }
 }
 
+/**
+ * BPM input — holds a draft string so the user can type freely without
+ * the per-keystroke clamp snapping characters back. Commits on blur or
+ * Enter; reverts on Escape.
+ */
+function BPMInput({ deckId, letter, baseBPM, setDeck }) {
+  const [draft, setDraft] = useState(String(baseBPM));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDraft(String(baseBPM)); }, [baseBPM, focused]);
+
+  const commit = () => {
+    const n = Number(draft);
+    if (!isFinite(n) || n <= 0) {
+      setDraft(String(baseBPM));
+      return;
+    }
+    const clamped = Math.max(40, Math.min(220, n));
+    setDeck(deckId, { baseBPM: clamped });
+    setDraft(String(clamped));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => { setFocused(true); e.target.select(); }}
+      onBlur={() => { setFocused(false); commit(); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.currentTarget.blur(); }
+        else if (e.key === "Escape") { setDraft(String(baseBPM)); e.currentTarget.blur(); }
+      }}
+      className="bpm-input w-12 bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
+      data-testid={`deck-${letter}-base-bpm`}
+      title="Base BPM (Enter to apply, Esc to cancel)"
+    />
+  );
+}
+
 export default function Deck({ id, label, accent }) {
   const letter = id === "deckA" ? "a" : "b";
   const waveRef = useRef(null);
@@ -1192,12 +1232,7 @@ export default function Deck({ id, label, accent }) {
                 <Activity className="w-3 h-3 text-[#FF9500] animate-pulse" data-testid={`deck-${letter}-bpm-analyzing`}
                           aria-label="Analyzing BPM" />
               )}
-              <input
-                type="number" value={deck.baseBPM}
-                onChange={(e) => setDeck(id, { baseBPM: Math.max(40, Math.min(220, +e.target.value || 120)) })}
-                className="bpm-input w-12 bg-black/60 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono-dj text-white text-center focus:outline-none focus:border-[#D10A0A]"
-                data-testid={`deck-${letter}-base-bpm`} title="Base BPM"
-              />
+              <BPMInput deckId={id} letter={letter} baseBPM={deck.baseBPM} setDeck={setDeck} />
               <button
                 type="button"
                 data-testid={`deck-${letter}-bpm-halve`}
