@@ -1,4 +1,4 @@
-import { Radio, Gamepad2, Save, FolderOpen, Square, FileAudio } from "lucide-react";
+import { Radio, Gamepad2, Save, FolderOpen, Square, FileAudio, Mic } from "lucide-react";
 import { useDJStore } from "@/store/djStore";
 
 export default function Header({
@@ -8,6 +8,8 @@ export default function Header({
   onOpenExport, canExport,
 }) {
   const midi = useDJStore((s) => s.midi);
+  const mic = useDJStore((s) => s.mic);
+  const setMic = useDJStore((s) => s.setMic);
   const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
   return (
     <header data-testid="app-header"
@@ -88,6 +90,24 @@ export default function Header({
       </div>
 
       <div className="flex items-center gap-4">
+        <button
+          data-testid="header-mic-ducker"
+          onClick={() => setMic({ ducker: !mic.ducker })}
+          disabled={!mic.enabled}
+          title={
+            !mic.enabled ? "Enable mic first to use ducker"
+            : mic.ducker  ? "Auto-duck ON — music drops when you talk"
+            : "Auto-duck music when speaking on mic"
+          }
+          className={`flex items-center gap-2 text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded border transition disabled:opacity-30 disabled:cursor-not-allowed ${
+            mic.ducker
+              ? "border-[#FF9500]/60 text-[#FF9500] bg-[#FF9500]/10 shadow-[0_0_10px_#FF950055]"
+              : "border-white/10 text-[#A1A1AA] hover:text-white hover:border-white/30"
+          }`}
+        >
+          <Mic className="w-3.5 h-3.5" />
+          Duck
+        </button>
         <button
           data-testid="header-midi"
           onClick={onOpenMidi}

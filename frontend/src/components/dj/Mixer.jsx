@@ -601,19 +601,6 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
             >
               {mic.enabled ? <Mic className="w-3 h-3 pointer-events-none" /> : <MicOff className="w-3 h-3 pointer-events-none" />}
             </button>
-            <button
-              data-testid="mic-ducker"
-              onClick={() => setMic({ ducker: !mic.ducker })}
-              disabled={!mic.enabled}
-              className={`text-[8px] font-mono-dj tracking-[0.15em] px-1.5 py-0.5 rounded border transition disabled:opacity-30 disabled:cursor-not-allowed ${
-                mic.ducker
-                  ? "border-[#FF9500]/70 text-[#FF9500] bg-[#FF9500]/10 shadow-[0_0_6px_#FF950055]"
-                  : "border-white/15 text-[#71717A] hover:border-white/40 hover:text-white"
-              }`}
-              title="DUCK — auto-lower music when speaking on mic"
-            >
-              DUCK
-            </button>
             <EQKnob
               label="MIC VOL" value={mic.volume} min={0} max={3.0}
               onChange={(v) => setMic({ volume: Math.max(0, Math.min(3.0, v)) })}
