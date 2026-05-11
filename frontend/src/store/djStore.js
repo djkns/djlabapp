@@ -92,6 +92,7 @@ export const useDJStore = create(
         enabled: false,
         volume: 0.8,
         deviceId: "default",   // selected input device — "default" = OS pick
+        ducker: false,         // auto-duck music when speaking
       },
 
       // MIDI

@@ -518,6 +518,51 @@ let micSource = null;
 let micGain = null;
 let micAnalyser = null;     // for the mic input VU readout
 
+// Auto-ducker: drops music when user speaks into the mic, restores when quiet.
+let duckerEnabled = false;
+let duckerInterval = null;
+let duckerLastSpeakAt = 0;
+const DUCK_LEVEL = 0.3;       // music gain while talking
+const DUCK_THRESHOLD = 0.04;  // RMS above this = "talking"
+const DUCK_HOLD_MS = 600;     // keep ducked this long after voice drops
+const DUCK_ATTACK_S = 0.08;   // fade-down time constant
+const DUCK_RELEASE_S = 0.25;  // fade-up time constant
+
+export function setDuckerEnabled(enabled) {
+  duckerEnabled = !!enabled;
+  if (!duckerEnabled) {
+    // Restore music immediately when ducker turns off
+    const { ctx, masterGain } = getAudioContext();
+    masterGain.gain.setTargetAtTime(1.0, ctx.currentTime, DUCK_RELEASE_S);
+  }
+}
+
+function startDuckerLoop() {
+  if (duckerInterval) return;
+  const buf = new Uint8Array(1024);
+  duckerInterval = setInterval(() => {
+    if (!duckerEnabled || !micAnalyser) return;
+    const { ctx, masterGain } = getAudioContext();
+    micAnalyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / buf.length);
+    const now = performance.now();
+    if (rms > DUCK_THRESHOLD) duckerLastSpeakAt = now;
+    const shouldDuck = (now - duckerLastSpeakAt) < DUCK_HOLD_MS;
+    const target = shouldDuck ? DUCK_LEVEL : 1.0;
+    const tc = shouldDuck ? DUCK_ATTACK_S : DUCK_RELEASE_S;
+    masterGain.gain.setTargetAtTime(target, ctx.currentTime, tc);
+  }, 100);
+}
+
+function stopDuckerLoop() {
+  if (duckerInterval) { clearInterval(duckerInterval); duckerInterval = null; }
+  // Restore music gain when mic is fully turned off
+  const { ctx, masterGain } = getAudioContext();
+  masterGain.gain.setTargetAtTime(1.0, ctx.currentTime, DUCK_RELEASE_S);
+}
+
 /** Subscribe to the mic analyser; null when mic is not active. */
 export function getMicAnalyser() { return micAnalyser; }
 
@@ -550,6 +595,7 @@ export async function enableMic(enabled) {
     try { micAnalyser?.disconnect(); } catch { /* ignore */ }
     if (micStream) micStream.getTracks().forEach((t) => t.stop());
     micStream = null; micSource = null; micGain = null; micAnalyser = null;
+    stopDuckerLoop();
     return false;
   }
 }
@@ -574,6 +620,10 @@ export function enableMicWithStream(stream) {
     micSource.connect(micGain);
     micGain.connect(masterGain);
 
+    // Start the auto-ducker loop. Runs ~10x/sec — when the mic input RMS
+    // crosses a threshold, ramp masterGain down to DUCK_LEVEL; when it
+    // drops back below for HOLD_MS, restore to 1.0.
+    startDuckerLoop();
     return true;
   } catch (err) {
     console.error("enableMicWithStream failed", err);

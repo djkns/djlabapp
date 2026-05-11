@@ -6,7 +6,7 @@ import {
   startMasterRecording, stopMasterRecording, crossfadeGains,
   enableMic, enableMicWithStream, setMicVolume,
   enableHeadphones, setHeadphoneMix, setHeadphoneVolume, setHeadphoneMasterEnabled, setHeadphoneSplit,
-  getDeckChain, DJ_MIC_CONSTRAINTS, getMicAnalyser,
+  getDeckChain, DJ_MIC_CONSTRAINTS, getMicAnalyser, setDuckerEnabled,
 } from "@/lib/audioEngine";
 import { toast } from "sonner";
 import EQKnob from "./EQKnob";
@@ -452,6 +452,9 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
   useEffect(() => { setHeadphoneSplit(!!hp.splitCue); }, [hp.splitCue]);
   useEffect(() => { enableHeadphones(hp.enabled); }, [hp.enabled]);
 
+  // Mic ducker → audio engine
+  useEffect(() => { setDuckerEnabled(!!mic.ducker); }, [mic.ducker]);
+
   const start = async () => {
     await resumeAudioContext();
     elapsedRef.current = 0; setElapsed(0);
@@ -597,6 +600,19 @@ export default function Mixer({ deckChains, onOpenSaveSet, onOpenSavedSets, onOp
               title={mic.enabled ? "Mic is LIVE — click to mute" : "Enable microphone"}
             >
               {mic.enabled ? <Mic className="w-3 h-3 pointer-events-none" /> : <MicOff className="w-3 h-3 pointer-events-none" />}
+            </button>
+            <button
+              data-testid="mic-ducker"
+              onClick={() => setMic({ ducker: !mic.ducker })}
+              disabled={!mic.enabled}
+              className={`text-[8px] font-mono-dj tracking-[0.15em] px-1.5 py-0.5 rounded border transition disabled:opacity-30 disabled:cursor-not-allowed ${
+                mic.ducker
+                  ? "border-[#FF9500]/70 text-[#FF9500] bg-[#FF9500]/10 shadow-[0_0_6px_#FF950055]"
+                  : "border-white/15 text-[#71717A] hover:border-white/40 hover:text-white"
+              }`}
+              title="DUCK — auto-lower music when speaking on mic"
+            >
+              DUCK
             </button>
             <EQKnob
               label="MIC VOL" value={mic.volume} min={0} max={3.0}
