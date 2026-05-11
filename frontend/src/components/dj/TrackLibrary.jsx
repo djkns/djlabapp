@@ -29,6 +29,32 @@ export default function TrackLibrary({ open, onToggle }) {
   const containerRef = useRef(null);
   const [containerH, setContainerH] = useState(360);
 
+  // User-resizable panel height. Default 38vh — short enough not to cover the
+  // crossfader. Drag the top grip to expand. Persists across sessions.
+  const [panelVH, setPanelVH] = useState(() => {
+    const saved = Number(localStorage.getItem("djlab-library-vh"));
+    return isFinite(saved) && saved >= 25 && saved <= 80 ? saved : 38;
+  });
+  useEffect(() => { localStorage.setItem("djlab-library-vh", String(panelVH)); }, [panelVH]);
+
+  const handleResizeStart = (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startVH = panelVH;
+    const vh = window.innerHeight;
+    const onMove = (ev) => {
+      const dy = ev.clientY - startY;
+      const next = Math.max(25, Math.min(80, startVH - (dy / vh) * 100));
+      setPanelVH(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   // Live BPM of each deck (baseBPM scaled by tempo pitch). Subscribing to the
   // raw fields keeps this filter reactive: bend Deck A's tempo and the Match
   // list re-sorts itself in real time.
@@ -185,7 +211,19 @@ export default function TrackLibrary({ open, onToggle }) {
         </span>
       </button>
 
-      <div className="h-[60vh] bg-[#0a0a0a]/98 backdrop-blur-2xl border-t border-white/10 overflow-hidden flex flex-col">
+      <div
+        className="bg-[#0a0a0a]/98 backdrop-blur-2xl border-t border-white/10 overflow-hidden flex flex-col relative"
+        style={{ height: `${panelVH}vh` }}
+      >
+        {/* Resize grip — drag UP to expand, DOWN to shrink. Persists. */}
+        <div
+          onPointerDown={handleResizeStart}
+          data-testid="library-resize-grip"
+          title="Drag to resize the library height"
+          className="absolute top-0 left-1/2 -translate-x-1/2 z-10 px-6 py-1 cursor-row-resize group"
+        >
+          <div className="w-10 h-1 rounded-full bg-white/15 group-hover:bg-[#FF1F1F]/70 transition" />
+        </div>
         {/* Tab strip */}
         <div className="flex items-center gap-1 px-3 pt-2 border-b border-white/5">
           {[
